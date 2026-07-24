@@ -138,6 +138,35 @@
   .swatch.progress{ background:linear-gradient(135deg, var(--marker) 50%, #fff 50%); }
   .swatch.planned{  background:#fff; }
 
+  /* ---- link across to the timeline planner ---- */
+  .legend .tool-link{
+    margin-left:auto;
+    display:inline-flex; align-items:center; gap:9px;
+    padding:7px 13px;
+    border:1px solid var(--line);
+    background:var(--paper);
+    text-decoration:none;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size:.7rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted);
+    transition:color .16s, border-color .16s, box-shadow .16s;
+  }
+  .legend .tool-link .mark{
+    width:9px; height:9px; flex:0 0 auto;
+    border:1.5px solid currentColor;
+  }
+  .legend .tool-link .arrow{ transition:transform .16s; }
+  .legend .tool-link:hover{
+    color:var(--accent);
+    border-color:var(--accent);
+    box-shadow:3px 3px 0 rgba(11,95,176,.09);
+  }
+  .legend .tool-link:hover .arrow{ transform:translateX(3px); }
+  .legend .tool-link:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  @media (max-width:620px){
+    .legend .tool-link{ margin-left:0; }
+  }
+
   /* ---- the horizontal timeline rail ---- */
   .rail-wrap{
     overflow:hidden;           /* panning is handled in JS, not native scroll */
@@ -262,6 +291,10 @@
     <span><i class="swatch released"></i> Released</span>
     <span><i class="swatch progress"></i> In progress</span>
     <span><i class="swatch planned"></i> Planned</span>
+
+    <a class="tool-link" href="timeline.html" title="Plan the mod's story timeline">
+      <i class="mark"></i>Timeline planner<span class="arrow">&rarr;</span>
+    </a>
   </div>
 
   <div class="rail-wrap">

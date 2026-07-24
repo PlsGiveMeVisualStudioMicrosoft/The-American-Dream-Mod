@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timeline Planner — The American Dream</title>
+<style>
+  /* ============================================================
+     LOOK & FEEL — same tokens as the mod roadmap page.
+     Change a value here and it updates everywhere.
+     ============================================================ */
+  :root{
+    --paper:      #ffffff;   /* page background        */
+    --grid:       #eef0f2;   /* faint grid lines       */
+    --ink:        #1f2328;   /* main text              */
+    --muted:      #6b7280;   /* secondary text         */
+    --line:       #c4c8ce;   /* borders, dotted lines  */
+    --line-soft:  #e4e7ea;   /* inner hairlines        */
+    --marker:     #16181d;   /* black square markers   */
+    --accent:     #0b5fb0;   /* blue for interactive   */
+    --tint:       #eef3fb;   /* title-bar background   */
+    --tint-2:     #f7f9fb;   /* very soft fill         */
+    --danger:     #a3312a;
+    --mono: ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --ui:   system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+
+  *{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0;
+    font-family:var(--ui);
+    color:var(--ink);
+    background:var(--paper);
+    font-size:15px;
+  }
+
+  /* faint blueprint grid behind everything */
+  .bg-grid{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0/34px 34px,
+      linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/34px 34px;
+    -webkit-mask:linear-gradient(#000,rgba(0,0,0,.3));
+            mask:linear-gradient(#000,rgba(0,0,0,.3));
+  }
+
+  /* ---------- shared controls ---------- */
+  button{ font-family:inherit; font-size:inherit; color:inherit; }
+  .btn{
+    display:inline-flex; align-items:center; gap:6px;
+    border:1px solid var(--line); background:var(--paper);
+    padding:6px 11px; cursor:pointer;
+    font:.78rem/1.1 var(--mono); letter-spacing:.02em; color:var(--ink);
+    transition:background .14s, border-color .14s, color .14s;
+  }
+  .btn:hover{ background:var(--tint); border-color:var(--accent); color:var(--accent); }
+  .btn.primary{ background:var(--tint); border-color:var(--accent); color:var(--accent); }
+  .btn.primary:hover{ background:var(--accent); color:#fff; }
+  a.btn{ text-decoration:none; }
+  .btn.ghost{ border-color:transparent; }
+  .btn.ghost:hover{ border-color:var(--line); }
+  .btn.tiny{ padding:3px 7px; font-size:.72rem; }
+  .btn.danger:hover{ border-color:var(--danger); color:var(--danger); background:#fdf3f2; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  input,textarea,select{
+    font-family:var(--ui); font-size:.9rem; color:var(--ink);
+    background:transparent; border:1px solid var(--line-soft);
+    padding:7px 9px; width:100%;
+  }
+  input:hover,textarea:hover,select:hover{ border-color:var(--line); }
+  input:focus,textarea:focus,select:focus{ outline:none; border-color:var(--accent); background:#fff; }
+  textarea{ resize:vertical; line-height:1.5; min-height:64px; }
+  .mono{ font-family:var(--mono); font-size:.82rem; }
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:5;
+    background:rgba(255,255,255,.93);
+    backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--line);
+  }
+  .topbar-in{
+    max-width:1260px; margin:0 auto; padding:14px 26px;
+    display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;
+  }
+  .brand{ flex:1 1 260px; min-width:0; }
+  .brand input{ border-color:transparent; padding:2px 5px; margin-left:-5px; }
+  .brand input:hover{ border-color:var(--line-soft); }
+  #projTitle{ font-size:1.35rem; font-weight:600; letter-spacing:-.02em; }
+  #projSub{ font-size:.87rem; color:var(--muted); margin-top:2px; }
+  .tools{ display:flex; gap:7px; align-items:center; flex-wrap:wrap; }
+  .save-state{
+    font:.7rem/1 var(--mono); color:var(--muted);
+    letter-spacing:.04em; white-space:nowrap; padding-left:4px;
+  }
+  .save-state.busy{ color:var(--accent); }
+
+  /* search row */
+  .searchbar{
+    max-width:1260px; margin:0 auto; padding:0 26px 12px;
+    display:none;
+  }
+  .searchbar.on{ display:block; }
+  .searchbar input{ border-color:var(--line); font-family:var(--mono); font-size:.82rem; }
+
+  /* ---------- stage: timeline column + detail page ---------- */
+  .wrap{ max-width:1260px; margin:0 auto; padding:34px 26px 110px; position:relative; z-index:1; }
+  .stage{ display:flex; gap:36px; align-items:flex-start; justify-content:center; }
+  .tl-col{
+    width:min(640px,100%); flex:0 0 auto;
+    transition:width .42s cubic-bezier(.22,.61,.36,1);
+  }
+  .stage.open{ justify-content:flex-start; }
+  .stage.open .tl-col{ width:288px; }
+  .detail{ flex:1 1 auto; min-width:0; display:none; }
+  .stage.open .detail{ display:block; animation:fade .3s ease both; }
+  @keyframes fade{ from{ opacity:0; transform:translateY(6px);} to{ opacity:1; transform:none;} }
+
+  /* ---------- the vertical spine + period cards ---------- */
+  .tl-head{
+    display:flex; align-items:baseline; justify-content:space-between;
+    gap:10px; margin-bottom:22px;
+  }
+  .tl-head h2{
+    margin:0; font:.72rem/1 var(--mono); letter-spacing:.14em;
+    text-transform:uppercase; color:var(--muted);
+  }
+  .periods{ position:relative; padding-top:6px; }
+  .spine{
+    position:absolute; left:0; top:0; bottom:0; width:0;
+    border-left:2px dashed var(--line);
+  }
+
+  .period{ position:relative; --pad:72px; padding-left:var(--pad); margin-bottom:34px; }
+  .stage.open .period{ --pad:34px; margin-bottom:20px; }
+  .period .node{
+    position:absolute; left:-5px; top:15px; width:12px; height:12px;
+    background:var(--paper); border:2px solid var(--marker);
+    transition:background .16s, border-color .16s;
+  }
+  .period.active .node,
+  .period:hover .node{ background:var(--marker); }
+  .period.active .node{ border-color:var(--accent); background:var(--accent); }
+  .period .conn{
+    position:absolute; left:9px; top:21px; height:0;
+    width:calc(var(--pad) - 13px);
+    border-top:1px dashed var(--line);
+  }
+
+  .pcard{
+    border:1px solid var(--line);
+    background:var(--paper);
+    border-left:4px solid var(--acc,#5b6470);
+    cursor:pointer;
+    transition:box-shadow .16s, border-color .16s, transform .16s;
+  }
+  .pcard:hover{ box-shadow:4px 4px 0 rgba(0,0,0,.05); }
+  .period.active .pcard{ border-color:var(--accent); border-left-color:var(--acc,#5b6470); box-shadow:4px 4px 0 rgba(11,95,176,.10); }
+  .pbar{
+    display:flex; align-items:center; gap:8px;
+    padding:6px 8px 6px 11px;
+    background:var(--tint); border-bottom:1px solid var(--line);
+  }
+  .pbar .p-date{
+    border-color:transparent; background:transparent;
+    font:.74rem/1.2 var(--mono); color:var(--muted);
+    letter-spacing:.03em; padding:3px 4px; flex:1 1 auto; min-width:0;
+  }
+  .pbar .p-date:hover{ border-color:var(--line); }
+  .pacts{ display:flex; gap:3px; opacity:0; transition:opacity .16s; flex:0 0 auto; }
+  .period:hover .pacts, .period:focus-within .pacts{ opacity:1; }
+  .pbody{ padding:10px 12px 12px; }
+  .p-title{
+    border-color:transparent; padding:2px 4px; margin:0 0 4px -4px;
+    font-size:1.02rem; font-weight:600; letter-spacing:-.01em;
+  }
+  .p-title:hover{ border-color:var(--line-soft); }
+  .p-list{ list-style:none; margin:8px 0 0; padding:0; }
+  .p-list li{
+    font-size:.84rem; color:var(--ink); padding:3px 0 3px 14px;
+    position:relative; line-height:1.35;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .p-list li::before{
+    content:""; position:absolute; left:0; top:11px;
+    width:5px; height:5px; background:var(--accent);
+  }
+  .p-list li.more{ color:var(--muted); font-family:var(--mono); font-size:.74rem; }
+  .p-list li.more::before{ display:none; }
+  .p-empty{ font-size:.82rem; color:var(--muted); font-style:italic; margin-top:6px; }
+  .pfoot{
+    border-top:1px dotted var(--line);
+    padding:6px 12px; font:.7rem/1 var(--mono); color:var(--muted);
+    letter-spacing:.04em; display:flex; gap:10px; flex-wrap:wrap;
+  }
+  .stage.open .p-list, .stage.open .pfoot, .stage.open .p-empty{ display:none; }
+  .stage.open .pbody{ padding:8px 10px 10px; }
+  .stage.open .p-title{ font-size:.9rem; }
+
+  .add-period{ margin-left:72px; }
+  .stage.open .add-period{ margin-left:34px; }
+
+  .swatches{ display:flex; gap:4px; }
+  .sw{ width:13px; height:13px; border:1px solid rgba(0,0,0,.18); cursor:pointer; padding:0; }
+  .sw[aria-pressed="true"]{ outline:2px solid var(--ink); outline-offset:1px; }
+
+  /* ---------- detail page ---------- */
+  .dhead{ margin-bottom:16px; }
+  .dcrumb{
+    font:.7rem/1 var(--mono); letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:8px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .dtitle{
+    font-size:1.55rem; font-weight:600; letter-spacing:-.02em;
+    border-color:transparent; padding:3px 6px; margin-left:-6px;
+  }
+  .dtitle:hover{ border-color:var(--line-soft); }
+  .dmeta{ display:flex; gap:10px; align-items:center; margin-top:6px; flex-wrap:wrap; }
+  .ddate{
+    border-color:transparent; padding:3px 6px; margin-left:-6px;
+    font-family:var(--mono); font-size:.82rem; color:var(--muted); max-width:280px;
+  }
+  .ddate:hover{ border-color:var(--line-soft); }
+
+  .tabs{ display:flex; gap:5px; flex-wrap:wrap; position:relative; top:1px; }
+  .tab{
+    border:1px solid var(--line); border-bottom:1px solid var(--line);
+    background:var(--tint-2); cursor:pointer;
+    padding:9px 13px; font:.72rem/1 var(--mono);
+    letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+    display:inline-flex; align-items:center; gap:7px;
+  }
+  .tab:hover{ color:var(--accent); }
+  .tab .cnt{
+    font-size:.68rem; background:var(--paper); border:1px solid var(--line-soft);
+    padding:1px 5px; color:var(--muted);
+  }
+  .tab.on{
+    background:var(--paper); color:var(--ink);
+    border-bottom-color:var(--paper);
+    box-shadow:0 -2px 0 var(--accent) inset;
+  }
+  .tab.on .cnt{ border-color:var(--accent); color:var(--accent); }
+  .panel{
+    border:1px solid var(--line); background:var(--paper);
+    padding:24px 24px 28px; min-height:440px;
+  }
+
+  .panel-intro{
+    font-size:.86rem; color:var(--muted); line-height:1.5;
+    margin:0 0 20px; max-width:60ch;
+  }
+  .sec-label{
+    font:.7rem/1 var(--mono); letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 10px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+  }
+  .sec + .sec{ margin-top:30px; padding-top:26px; border-top:1px dotted var(--line); }
+
+  /* form fields */
+  .fields{ display:grid; grid-template-columns:repeat(12,1fr); gap:12px; }
+  .fld{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .fld > span{
+    font:.68rem/1 var(--mono); letter-spacing:.09em; text-transform:uppercase;
+    color:var(--muted);
+  }
+  .s3{ grid-column:span 3; } .s4{ grid-column:span 4; }
+  .s6{ grid-column:span 6; } .s8{ grid-column:span 8; } .s12{ grid-column:span 12; }
+  @media (max-width:760px){ .s3,.s4,.s6,.s8{ grid-column:span 12; } }
+
+  /* list items */
+  .item{ border:1px solid var(--line); background:var(--paper); margin-bottom:12px; }
+  .item.collapsed .ibody{ display:none; }
+  .ihead{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 9px 8px 12px; background:var(--tint-2);
+    border-bottom:1px solid var(--line-soft); cursor:pointer;
+  }
+  .item.collapsed .ihead{ border-bottom:none; }
+  .inum{ font:.7rem/1 var(--mono); color:var(--muted); letter-spacing:.06em; }
+  .ititle{
+    flex:1 1 auto; min-width:0; font-size:.92rem; font-weight:500;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .ititle.empty{ color:var(--muted); font-weight:400; font-style:italic; }
+  .iacts{ display:flex; gap:3px; flex:0 0 auto; }
+  .ibody{ padding:14px 12px 16px; }
+
+  /* ---- drag handles ---- */
+  .grip{
+    flex:0 0 auto; width:22px; height:24px; padding:0;
+    border:1px solid transparent; background:transparent;
+    color:var(--line); cursor:grab; touch-action:none;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+  .grip:hover{ color:var(--accent); }
+  .grip:focus-visible{ color:var(--accent); border-color:var(--accent); }
+  .grip:active{ cursor:grabbing; }
+  .grip svg{ pointer-events:none; display:block; }
+  .drop-ph{
+    border:1px dashed var(--accent);
+    background:rgba(11,95,176,.05);
+  }
+  .dragging{
+    box-shadow:0 12px 26px rgba(0,0,0,.16) !important;
+    pointer-events:none;
+  }
+  .dragging .pcard{ box-shadow:none; }
+  body.is-dragging{ user-select:none; cursor:grabbing; }
+  body.is-dragging .pacts{ opacity:0 !important; }
+  .sec{ position:relative; }
+
+  /* ---- event options ---- */
+  .opts{ display:flex; flex-direction:column; gap:6px; }
+  .opt{ display:flex; align-items:center; gap:8px; }
+  .optkey{
+    flex:0 0 auto; width:22px; height:28px;
+    display:inline-flex; align-items:center; justify-content:center;
+    font:.74rem/1 var(--mono); color:var(--muted);
+    border:1px solid var(--line-soft); background:var(--tint-2);
+  }
+  .opt input{ flex:1 1 auto; min-width:0; }
+  .opt .btn{ opacity:0; }
+  .opt:hover .btn, .opt:focus-within .btn{ opacity:1; }
+  .opts-foot{ margin-top:2px; }
+  .opts-hint{ font:.68rem/1.4 var(--mono); color:var(--muted); letter-spacing:.03em; }
+
+  .empty-note{
+    border:1px dashed var(--line); background:var(--tint-2);
+    padding:20px; text-align:center; color:var(--muted); font-size:.88rem;
+  }
+
+  /* toast */
+  .toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(14px);
+    background:var(--marker); color:#fff; padding:9px 16px;
+    font:.78rem/1 var(--mono); letter-spacing:.02em;
+    opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:20;
+  }
+  .toast.on{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* mobile */
+  @media (max-width:920px){
+    .stage{ display:block; }
+    .tl-col{ width:100% !important; }
+    .stage.open .tl-col{ display:none; }
+    .panel{ padding:18px 14px 22px; }
+    .period{ --pad:52px !important; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{ transition:none !important; animation:none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <input id="projTitle" data-proj data-f="title" placeholder="Project title">
+      <input id="projSub" data-proj data-f="subtitle" placeholder="Short subtitle">
+    </div>
+    <div class="tools">
+      <button class="btn primary" id="btnAdd">+ Add period</button>
+      <button class="btn" id="btnSearch">Search</button>
+      <button class="btn" id="btnExport">Export</button>
+      <button class="btn" id="btnImport">Import</button>
+      <button class="btn" id="btnOutline">Mod outline</button>
+      <button class="btn ghost" id="btnNew">New</button>
+      <a class="btn ghost" id="linkRoadmap" href="index.html">&larr; Roadmap</a>
+      <input type="file" id="fileInput" accept=".json,application/json" hidden>
+      <span class="save-state" id="saveState">&nbsp;</span>
+    </div>
+  </div>
+  <div class="searchbar" id="searchbar">
+    <input id="searchInput" placeholder="Filter periods — searches titles, events, characters, notes…">
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stage" id="stage">
+
+    <section class="tl-col">
+      <div class="tl-head">
+        <h2>Timeline</h2>
+        <span class="save-state" id="tlCount"></span>
+      </div>
+      <div class="periods" id="periods">
+        <div class="spine"></div>
+      </div>
+      <button class="btn add-period" id="btnAdd2">+ Add period</button>
+    </section>
+
+    <section class="detail" id="detail"></section>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<datalist id="dl-ideology"></datalist>
+<datalist id="dl-role"></datalist>
+
+<script>
+/* ============================================================
+   1. CONFIG — the bits you'll most likely want to change.
+   ============================================================ */
+
+/* Suggestions offered in the "Ideology" boxes. Free text, so you can
+   always type something that isn't on this list. */
+const IDEOLOGIES = [
+  "democratic","communist","fascist","neutrality",
+  "liberalism","conservatism","social_democracy","centrism","democratic_populism",
+  "right_wing_populism","reactionary_nationalism","authoritarian_populism",
+  "ultra_nationalism","neo_fascism",
+  "military_junta","oligarchic_regime","national_conservatism",
+  "personalist_dictatorship","neutral_centrism"
+];
+
+/* Suggestions offered in the "Role" box on characters. */
+const ROLES = [
+  "country_leader","field_marshal","corps_commander","navy_leader",
+  "advisor","minister","theorist","political figure"
+];
+
+/* Colour options for the stripe down the side of each period card. */
+const COLORS = ["#5b6470","#0b5fb0","#0f766e","#a16207","#a3312a","#6b3fa0"];
+
+/* The tabs on a period's page. Reorder or rename freely — the `k` value
+   must stay the same, it's what the data is stored under. */
+const TABS = [
+  { k:"overview",   label:"Overview",     count:p => p.politics.length   },
+  { k:"events",     label:"Events",       count:p => p.events.length     },
+  { k:"characters", label:"Characters",   count:p => p.characters.length },
+  { k:"focuses",    label:"Focus ideas",  count:p => p.focuses.length    },
+  { k:"states",     label:"States & map", count:p => p.states.length     },
+  { k:"notes",      label:"Notes",        count:() => null               }
+];
+
+/* ============================================================
+   2. FIELD DEFINITIONS
+   Each list on a period page is described here. `s4`, `s6`, `s12`…
+   is how many of the 12 grid columns the box takes up.
+   `code` builds a paste-ready HOI4 snippet for the "Copy code" button.
+   ============================================================ */
+const LISTS = {
+  politics:{
+    one:"faction", add:"Add country or faction",
+    title:it => it.country || it.tag,
+    fields:[
+      {k:"country",  l:"Country / faction", s:"s4"},
+      {k:"tag",      l:"Tag",               s:"s2", mono:true, ph:"USA"},
+      {k:"ideology", l:"Ideology",          s:"s3", dl:"dl-ideology"},
+      {k:"leader",   l:"In charge",         s:"s3"},
+      {k:"notes",    l:"Where they stand",  s:"s12", area:true}
+    ]
+  },
+  events:{
+    one:"event", add:"Add event",
+    title:it => it.title,
+    fields:[
+      {k:"date",      l:"Date",            s:"s3", mono:true, ph:"2027.3.14"},
+      {k:"title",     l:"Title",           s:"s6"},
+      {k:"id",        l:"Event ID",        s:"s3", mono:true, ph:"collapse.1"},
+      {k:"countries", l:"Who it fires for",s:"s4", mono:true, ph:"USA, CAN"},
+      {k:"trigger",   l:"Fires when",      s:"s8"},
+      {k:"desc",      l:"What happens",    s:"s12", area:true},
+      {k:"options",   l:"Options",         s:"s12", opts:true}
+    ],
+    code:it => {
+      const ns   = it.id || "namespace.1";
+      const list = (Array.isArray(it.options) ? it.options : [])
+                     .map(o => String(o).trim()).filter(Boolean);
+      const blocks = (list.length ? list : ["Continue"]).map((text,i) => [
+        "\toption = {",
+        "\t\tname = " + ns + "." + String.fromCharCode(97+i),
+        "\t\t# " + text,
+        "\t}"
+      ].join("\n"));
+      return [
+        "country_event = {",
+        "\tid = " + ns,
+        "\ttitle = " + ns + ".t",
+        "\tdesc = " + ns + ".d",
+        "\tpicture = GFX_report_event_generic_rally",
+        "",
+        "\tis_triggered_only = yes",
+        ""
+      ].concat(blocks.join("\n\n")).concat(["}"]).join("\n");
+    }
+  },
+  characters:{
+    one:"character", add:"Add character",
+    title:it => it.name,
+    fields:[
+      {k:"name",     l:"Name",          s:"s4"},
+      {k:"tag",      l:"Country tag",   s:"s2", mono:true, ph:"USA"},
+      {k:"role",     l:"Role",          s:"s3", dl:"dl-role"},
+      {k:"ideology", l:"Ideology",      s:"s3", dl:"dl-ideology"},
+      {k:"portrait", l:"Portrait file", s:"s6", mono:true,
+       ph:"gfx/leaders/USA/portrait_usa_name.dds"},
+      {k:"traits",   l:"Traits",        s:"s6", mono:true, ph:"war_hero, dislikes_usa"},
+      {k:"notes",    l:"Who they are",  s:"s12", area:true}
+    ],
+    code:it => {
+      const tag  = (it.tag || "USA").toUpperCase();
+      const slug = tag + "_" + String(it.name || "new_character")
+                   .toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
+      return [
+        "characters = {",
+        "\t" + slug + " = {",
+        "\t\tname = \"" + (it.name || "New Character") + "\"",
+        "\t\tportraits = {",
+        "\t\t\tcivilian = { large = \"" + (it.portrait || "gfx/leaders/" + tag + "/" + slug + ".dds") + "\" }",
+        "\t\t}",
+        "\t\tcountry_leader = {",
+        "\t\t\tideology = " + (it.ideology || "neutrality"),
+        "\t\t\ttraits = { " + String(it.traits || "").split(/[,\s]+/).filter(Boolean).join(" ") + " }",
+        "\t\t\texpire = \"2100.1.1\"",
+        "\t\t}",
+        "\t}",
+        "}"
+      ].join("\n");
+    }
+  },
+  focuses:{
+    one:"focus", add:"Add focus idea",
+    title:it => it.name,
+    fields:[
+      {k:"name",      l:"Focus name",        s:"s5"},
+      {k:"id",        l:"Internal id",       s:"s4", mono:true, ph:"USA_rebuild_the_union"},
+      {k:"cost",      l:"Cost (weeks)",      s:"s3", mono:true, ph:"10"},
+      {k:"prereq",    l:"Comes after",       s:"s6", mono:true},
+      {k:"exclusive", l:"Mutually exclusive with", s:"s6", mono:true},
+      {k:"effects",   l:"What it does",      s:"s12", area:true}
+    ],
+    code:it => [
+      "focus = {",
+      "\tid = " + (it.id || "NEW_focus"),
+      "\ticon = GFX_goal_generic_demand_territory",
+      "\tx = 0",
+      "\ty = 0",
+      "\tcost = " + (it.cost || "10"),
+      "\tprerequisite = { " + (it.prereq ? "focus = " + it.prereq : "") + " }",
+      "\tmutually_exclusive = { " + (it.exclusive ? "focus = " + it.exclusive : "") + " }",
+      "\tavailable = {  }",
+      "\tai_will_do = { factor = 1 }",
+      "\tcompletion_reward = {",
+      "\t\t# " + String(it.effects || "effects go here").split("\n")[0],
+      "\t}",
+      "}"
+    ].join("\n")
+  },
+  states:{
+    one:"state", add:"Add state change",
+    title:it => it.name || (it.id ? "State " + it.id : ""),
+    fields:[
+      {k:"name",       l:"State name", s:"s4"},
+      {k:"id",         l:"State ID",   s:"s2", mono:true, ph:"361"},
+      {k:"owner",      l:"Owner",      s:"s2", mono:true, ph:"USA"},
+      {k:"controller", l:"Controller", s:"s2", mono:true, ph:"USA"},
+      {k:"cores",      l:"Cores",      s:"s2", mono:true, ph:"USA, VER"},
+      {k:"vp",         l:"Victory points", s:"s6", mono:true, ph:"3982 5"},
+      {k:"notes",      l:"What changes here", s:"s6", area:true}
+    ],
+    code:it => {
+      const cores = String(it.cores || "").split(/[,\s]+/).filter(Boolean)
+        .map(c => "\t\tadd_core_of = " + c.toUpperCase());
+      return [
+        "state = {",
+        "\tid = " + (it.id || "0"),
+        "\tname = \"STATE_" + (it.id || "0") + "\"",
+        "",
+        "\thistory = {",
+        "\t\towner = " + (it.owner || "USA"),
+        "\t\tcontroller = " + (it.controller || it.owner || "USA")
+      ].concat(cores).concat([
+        "\t\tvictory_points = { " + (it.vp || "0 0") + " }",
+        "\t}",
+        "}"
+      ]).join("\n");
+    }
+  }
+};
+
+/* ============================================================
+   3. SAVING
+   Tries the built-in artifact storage, then the browser's own
+   storage, then falls back to memory-only for this session.
+   ============================================================ */
+const KEY = "hoi4_timeline_v1";
+let memoryOnly = null;
+
+const Store = {
+  async load(){
+    if (window.storage && window.storage.get){
+      try { const r = await window.storage.get(KEY); return r ? JSON.parse(r.value) : null; }
+      catch(e){ /* key missing */ }
+    }
+    try { const v = localStorage.getItem(KEY); return v ? JSON.parse(v) : null; }
+    catch(e){ return memoryOnly; }
+  },
+  async save(obj){
+    const text = JSON.stringify(obj);
+    if (window.storage && window.storage.set){
+      try { await window.storage.set(KEY, text); return "saved"; } catch(e){ /* fall through */ }
+    }
+    try { localStorage.setItem(KEY, text); return "saved"; }
+    catch(e){ memoryOnly = obj; return "session"; }
+  }
+};
+
+/* ============================================================
+   4. STATE
+   ============================================================ */
+let state    = null;   // the whole project
+let openId   = null;   // which period is open, or null for the timeline view
+let tab      = "overview";
+let collapsed = new Set();   // list items folded shut
+let filter   = "";
+
+const uid = () => Math.random().toString(36).slice(2,9);
+
+function newPeriod(over){
+  return Object.assign({
+    id:uid(), title:"", date:"", color:0, summary:"", notes:"",
+    politics:[], events:[], characters:[], focuses:[], states:[]
+  }, over || {});
+}
+
+function starterProject(){
+  const row = o => Object.assign({ _id: uid() }, o);
+  return {
+    title: "The American Dream",
+    subtitle: "Story timeline \u2014 2025, the collapse, and what the states do with it",
+    periods: [
+
+      newPeriod({
+        title:"The second term opens",
+        date:"Jan 2025 \u2014 Dec 2025",
+        color:1,
+        summary:"Mod start. The country is whole, all fifty states already exist as playable nations, and nothing has broken yet. Approval opens at its real January 2025 level and Chaos sits near zero. Everything in this period is grounded in things that actually happened \u2014 the divergence hasn't arrived.",
+        politics:[
+          row({ country:"United States", tag:"USA", ideology:"neutrality",
+                leader:"The incoming administration",
+                notes:"Ruling party switches to neutrality on inauguration day. Real 2025 setup otherwise." }),
+          row({ country:"The fifty states", tag:"\u2014",
+                ideology:"Republican_Party / Democratic_Party",
+                leader:"Real governors as of 20 Jan 2025",
+                notes:"Each state also gets a main opposition figure. Popularities blend the 2024 presidential lean with the last governor's race." })
+        ],
+        events:[
+          row({ date:"2025.1.1", title:"New Orleans attack", id:"tad_opening.1",
+                countries:"USA", trigger:"Fires on game start",
+                desc:"The chronologically first event of the mod. Sets the tone before anything political happens.",
+                options:["Order a federal response","Leave it to the state"] }),
+          row({ date:"2025.1.20", title:"Inauguration", id:"tad_opening.2",
+                countries:"USA", trigger:"On date",
+                desc:"USA ruling_party switches to neutrality. A global news event fires alongside it.",
+                options:["Continue"] })
+        ],
+        notes:"Approval across this whole stretch is real polling \u2014 months 0 to 18 of the 48-entry curve in USA_approval_00_tuning.txt. Chaos creeps up slowly from about 4.\n\nOpen: how much the player is allowed to move the needle this early, and whether any state content exists before the divergence."
+      }),
+
+      newPeriod({
+        title:"The Iran war and the midterms",
+        date:"Jan 2026 \u2014 Nov 2026",
+        color:3,
+        summary:"The divergence. A war with Iran ends in defeat, and November's midterms become the first hinge that actually swings. Results in several states come out contested, and the administration moves to overturn them.",
+        politics:[
+          row({ country:"United States", tag:"USA", ideology:"neutrality",
+                notes:"Approval leaves its real band and starts following the scripted decline." }),
+          row({ country:"The states that should have flipped", ideology:"Democratic_Party",
+                leader:"Governors whose results are disputed",
+                notes:"Which states, and how many, is still open. These are the ones that secede later." })
+        ],
+        events:[
+          row({ date:"2026", title:"The war with Iran ends badly", id:"tad_iran.1",
+                countries:"USA", trigger:"Undecided",
+                desc:"The defeat abroad is what makes the midterm fight worth having for the administration \u2014 and what costs it the room to lose one.",
+                options:["Accept the terms","Blame the command","Escalate anyway"] }),
+          row({ date:"2026.7", title:"Last real polling datapoint",
+                countries:"USA", trigger:"Month 18 of the curve",
+                desc:"Not an in-game event \u2014 a marker. Everything after this point on the approval curve is the mod's own invention.",
+                options:[] }),
+          row({ date:"2026.11.3", title:"The midterms", id:"tad_midterm.1",
+                countries:"USA", trigger:"On date \u2014 month 22 of the curve",
+                desc:"Contested results in several states.",
+                options:["Certify the results","Order a federal recount","Refuse to certify"] })
+        ],
+        notes:"Open: does the Iran war start in 2025 or 2026, and does the player fight it or inherit the loss already lost?"
+      }),
+
+      newPeriod({
+        title:"\u201cTemporary\u201d secession",
+        date:"2027",
+        color:4,
+        summary:"The states that should have won start calling their secession temporary \u2014 a protest that quietly stops being one. Uprisings, shootouts and riots spread. The federal government is still legally in charge of everything and practically in charge of less each month.",
+        politics:[
+          row({ country:"The seceding states",
+                notes:"Every one of them insists this is temporary. None of them set a date for coming back." }),
+          row({ country:"Federal government", tag:"USA", ideology:"neutrality",
+                notes:"Still the only recognised authority. Increasingly the only thing it is." })
+        ],
+        events:[
+          row({ date:"2027", title:"The first declaration", id:"tad_secede.1",
+                countries:"USA", trigger:"Chaos above a threshold",
+                desc:"Which state goes first is the biggest single open choice in this timeline.",
+                options:["Send in the National Guard","Negotiate terms","Let it stand"] }),
+          row({ date:"2027", title:"A state refuses a federal order", id:"tad_secede.2",
+                countries:"USA", trigger:"After the first declaration",
+                desc:"The moment the refusal costs nothing, it stops being rare.",
+                options:["Make an example of them","Quietly withdraw the order"] })
+        ],
+        focuses:[
+          row({ name:"Let them go", id:"USA_let_them_go", cost:"10",
+                effects:"Releases the state and hands it its own order of battle." }),
+          row({ name:"Restore order", id:"USA_restore_order", cost:"10",
+                exclusive:"USA_let_them_go",
+                effects:"Keeps the state on the map and drives Chaos up." })
+        ],
+        states:[
+          row({ name:"Any seceding state", owner:"USA", controller:"USA",
+                notes:"On independence, TAD_load_state_oob loads its National Guard, state defence force and police formations." })
+        ],
+        notes:"Chaos is doing most of the driving by now.\n\nOpen: how many states go, in what order, and whether any of them come back."
+      }),
+
+      newPeriod({
+        title:"Scandal and the third term",
+        date:"2028",
+        color:5,
+        summary:"Approval bottoms out in single digits. October brings a scandal; December brings a move for a third term. This is where the approval system hands off \u2014 the global flag fires and the curve stops correcting anything.",
+        events:[
+          row({ date:"2028.10", title:"The scandal breaks", id:"tad_endgame.1",
+                countries:"USA", trigger:"Month 45 of the curve",
+                desc:"The last scripted shove downward.",
+                options:["Deny everything","Sacrifice someone","Say nothing"] }),
+          row({ date:"2028.12", title:"The third term", id:"tad_endgame.2",
+                countries:"USA", trigger:"Month 47 \u2014 the final entry in the curve",
+                desc:"The approval system sets its kill-switch flag here and stops driving the variable.",
+                options:["Take it","Step down"] })
+        ],
+        notes:"The curve targets 7\u201312% approval by late 2028 and Chaos is near its ceiling.\n\nAfter the kill switch fires, approval is whatever the collapse content decides it is."
+      }),
+
+      newPeriod({
+        title:"The collapse \u2014 date not fixed",
+        date:"2028? 2029?",
+        color:0,
+        summary:"The open question, and the reason this timeline exists. By the end of 2028 the country is almost gone. Whether the formal break lands in December 2028 or drifts through 2029 decides how much weight the last year of content has to carry.",
+        events:[
+          row({ title:"The break itself", date:"?", trigger:"Undecided",
+                desc:"Pick one and the rest of the timeline falls into place behind it.",
+                options:["A \u2014 December 2028, the third term is the collapse",
+                         "B \u2014 sometime in 2029, the third term only triggers it"] })
+        ],
+        notes:"A \u2014 The third term IS the collapse. December 2028 is the break; kill switch and collapse fire together. Tight and clean, but 2028 carries everything.\n\nB \u2014 The third term triggers it. 2029 is a year of unravelling that ends in the de facto federal United States. Much more room for state-by-state content, but the 48-month curve runs out a year early and something else has to drive the endgame.\n\nWhat the choice changes: how long the curve array needs to be, whether Chaos keeps climbing past month 47, and how much New England content sits before or after the break."
+      }),
+
+      newPeriod({
+        title:"Fifty powers",
+        date:"2029 \u2192 2049 (END_DATE)",
+        color:2,
+        summary:"A de facto federalized America, where the states are the real powers. The content updates fill them in one region at a time.",
+        politics:[
+          row({ country:"New England factions",
+                notes:"The first region built out, with many different factions inside it. Update 0.2." }),
+          row({ country:"Haiti", tag:"HAI",
+                notes:"Full civil-war path. Update 0.3." }),
+          row({ country:"Zapatista uprising",
+                notes:"Playable faction. Update 0.3." })
+        ],
+        focuses:[
+          row({ name:"Per-state focus trees",
+                effects:"New England first (0.2), then the East Coast as The 12 Colonies (0.4), then the West Coast as The Californian Dream (1.0)." })
+        ],
+        notes:"Roadmap targets: 0.2 New England (Q4 2026) \u00b7 0.3 South America (Q1 2027) \u00b7 0.4 The 12 Colonies (Q3 2027) \u00b7 1.0 The Californian Dream (2028).\n\nTech tree runs 1991\u20132045; mod END_DATE is 2049."
+      })
+
+    ]
+  };
+}
+
+/* ============================================================
+   5. SMALL HELPERS
+   ============================================================ */
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+}
+
+function period(id){ return state.periods.find(p => p.id === id); }
+function current(){ return openId ? period(openId) : null; }
+
+let toastTimer;
+function toast(msg){
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("on"), 1900);
+}
+
+let saveTimer;
+function touch(){
+  const s = $("#saveState");
+  s.textContent = "saving…"; s.classList.add("busy");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    const how = await Store.save(state);
+    s.classList.remove("busy");
+    s.textContent = how === "saved"
+      ? "saved " + new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})
+      : "this session only";
+  }, 400);
+}
+
+function autosize(el){
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = (el.scrollHeight + 2) + "px";
+}
+function autosizeAll(root){
+  (root || document).querySelectorAll("textarea").forEach(autosize);
+}
+
+function move(arr, i, delta){
+  const j = i + delta;
+  if (j < 0 || j >= arr.length) return false;
+  const [x] = arr.splice(i,1);
+  arr.splice(j,0,x);
+  return true;
+}
+
+/* Does this period match the search box? */
+function matches(p){
+  if (!filter) return true;
+  const hay = JSON.stringify(p).toLowerCase();
+  return hay.indexOf(filter) !== -1;
+}
+
+/* ============================================================
+   6. THE TIMELINE COLUMN
+   ============================================================ */
+function renderTimeline(){
+  const host = $("#periods");
+  const shown = state.periods.filter(matches);
+
+  host.innerHTML = '<div class="spine"></div>' + (
+    shown.length === 0
+      ? '<div class="empty-note" style="margin-left:72px">' +
+        (filter ? "Nothing matches that search." : "No periods yet. Add the first one below.") +
+        '</div>'
+      : shown.map(p => periodCard(p, state.periods.indexOf(p))).join("")
+  );
+
+  $("#tlCount").textContent =
+    state.periods.length + (state.periods.length === 1 ? " period" : " periods") +
+    (filter && shown.length !== state.periods.length ? " · " + shown.length + " shown" : "");
+}
+
+function periodCard(p, i){
+  const acc  = COLORS[p.color] || COLORS[0];
+  const evs  = p.events.slice(0,3);
+  const more = p.events.length - evs.length;
+
+  const preview = p.events.length
+    ? '<ul class="p-list">' +
+        evs.map(e => '<li>' + esc(e.title || "Untitled event") + '</li>').join("") +
+        (more > 0 ? '<li class="more">+ ' + more + ' more</li>' : "") +
+      '</ul>'
+    : '<div class="p-empty">No events written yet</div>';
+
+  const counts = [
+    p.events.length     + " ev",
+    p.characters.length + " ch",
+    p.focuses.length    + " foc",
+    p.states.length     + " st"
+  ].join(" · ");
+
+  return '' +
+  '<article class="period' + (p.id === openId ? " active" : "") + '" data-id="' + p.id + '">' +
+    '<span class="node"></span><span class="conn"></span>' +
+    '<div class="pcard" style="--acc:' + acc + '" data-open="' + p.id + '">' +
+      '<div class="pbar">' +
+        gripHtml("period", p.id, "") +
+        '<input class="p-date" data-f="date" data-p="' + p.id + '" value="' + esc(p.date) + '" placeholder="when">' +
+        '<span class="pacts">' +
+          '<button class="btn tiny ghost danger" data-act="delp" data-p="' + p.id + '" title="Delete period">&times;</button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="pbody">' +
+        '<input class="p-title" data-f="title" data-p="' + p.id + '" value="' + esc(p.title) + '" placeholder="Name this period">' +
+        preview +
+      '</div>' +
+      '<div class="pfoot"><span>' + String(i+1).padStart(2,"0") + '</span><span>' + counts + '</span></div>' +
+    '</div>' +
+  '</article>';
+}
+/* ============================================================
+   7. THE PERIOD PAGE (right-hand side)
+   ============================================================ */
+function renderDetail(){
+  const p = current();
+  if (!p){ $("#detail").innerHTML = ""; return; }
+  const idx = state.periods.indexOf(p);
+
+  $("#detail").innerHTML = '' +
+  '<div class="dhead">' +
+    '<div class="dcrumb">' +
+      '<span>Period ' + String(idx+1).padStart(2,"0") + ' of ' + String(state.periods.length).padStart(2,"0") + '</span>' +
+      '<span class="swatches">' +
+        COLORS.map((c,i) =>
+          '<button class="sw" style="background:' + c + '" data-act="color" data-i="' + i + '"' +
+          ' aria-pressed="' + (p.color === i) + '" title="Card colour"></button>').join("") +
+      '</span>' +
+      '<button class="btn tiny ghost" data-act="close">Back to timeline</button>' +
+    '</div>' +
+    '<input class="dtitle" data-f="title" value="' + esc(p.title) + '" placeholder="Name this period">' +
+    '<div class="dmeta">' +
+      '<input class="ddate" data-f="date" value="' + esc(p.date) + '" placeholder="when does it run?">' +
+    '</div>' +
+  '</div>' +
+  '<nav class="tabs">' +
+    TABS.map(t => {
+      const c = t.count(p);
+      return '<button class="tab' + (t.k === tab ? " on" : "") + '" data-tab="' + t.k + '">' +
+             esc(t.label) + (c ? '<span class="cnt">' + c + '</span>' : "") + '</button>';
+    }).join("") +
+  '</nav>' +
+  '<div class="panel" id="tabpanel"></div>';
+
+  renderPanel();
+}
+
+function renderPanel(){
+  const p = current();
+  if (!p) return;
+  let html = "";
+
+  if (tab === "overview"){
+    html =
+      '<p class="panel-intro">The shape of this period: what changed, who holds power, and what everyone is arguing about.</p>' +
+      '<div class="sec">' +
+        '<div class="sec-label"><span>Summary</span></div>' +
+        '<textarea data-f="summary" rows="4" placeholder="A few lines on what this period is about.">' + esc(p.summary) + '</textarea>' +
+      '</div>' +
+      listBlock("politics", "Political situation");
+  }
+  else if (tab === "notes"){
+    html =
+      '<p class="panel-intro">Anything that doesn\'t fit a tab — loose ideas, references, things to check.</p>' +
+      '<div class="sec">' +
+        '<textarea data-f="notes" rows="16" placeholder="Write freely.">' + esc(p.notes) + '</textarea>' +
+      '</div>';
+  }
+  else {
+    const t = TABS.find(x => x.k === tab);
+    html = listBlock(tab, t ? t.label : tab);
+  }
+
+  $("#tabpanel").innerHTML = html;
+  autosizeAll($("#tabpanel"));
+}
+
+function listBlock(key, heading){
+  const p = current(), sch = LISTS[key], arr = p[key];
+  return '' +
+  '<div class="sec">' +
+    '<div class="sec-label">' +
+      '<span>' + esc(heading) + '</span>' +
+      '<button class="btn tiny" data-act="iadd" data-list="' + key + '">+ ' + esc(sch.add) + '</button>' +
+    '</div>' +
+    (arr.length
+      ? arr.map((it,i) => itemCard(key, it, i)).join("")
+      : '<div class="empty-note">Nothing here yet. Use <b>' + esc(sch.add) + '</b> above.</div>') +
+  '</div>';
+}
+
+function itemCard(key, it, i){
+  const sch  = LISTS[key];
+  const name = sch.title(it);
+  const shut = collapsed.has(it._id);
+
+  return '' +
+  '<article class="item' + (shut ? " collapsed" : "") + '" data-item="' + it._id + '">' +
+    '<header class="ihead" data-toggle="' + it._id + '">' +
+      gripHtml("item", it._id, key) +
+      '<span class="inum">' + String(i+1).padStart(2,"0") + '</span>' +
+      '<span class="ititle' + (name ? "" : " empty") + '">' + esc(name || ("Untitled " + sch.one)) + '</span>' +
+      '<span class="iacts">' +
+        (sch.code ? '<button class="btn tiny ghost" data-act="code" data-list="' + key + '" data-item="' + it._id + '" title="Copy a HOI4 code skeleton">code</button>' : "") +
+        '<button class="btn tiny ghost danger" data-act="idel" data-list="' + key + '" data-item="' + it._id + '" title="Delete">&times;</button>' +
+      '</span>' +
+    '</header>' +
+    '<div class="ibody"><div class="fields">' +
+      sch.fields.map(f => fieldHtml(f, it, key, it._id)).join("") +
+    '</div></div>' +
+  '</article>';
+}
+
+function fieldHtml(f, obj, key, itemId){
+  if (f.opts) return optsHtml(obj, key);
+  const val = obj[f.k] == null ? "" : obj[f.k];
+  const attrs =
+    ' data-f="' + f.k + '"' +
+    (key ? ' data-list="' + key + '" data-item="' + itemId + '"' : "") +
+    (f.dl ? ' list="' + f.dl + '"' : "") +
+    (f.ph ? ' placeholder="' + esc(f.ph) + '"' : "") +
+    (f.mono ? ' class="mono"' : "");
+  const input = f.area
+    ? '<textarea' + attrs + ' rows="2">' + esc(val) + '</textarea>'
+    : '<input' + attrs + ' value="' + esc(val) + '">';
+  return '<label class="fld ' + f.s + '"><span>' + esc(f.l) + '</span>' + input + '</label>';
+}
+
+function gripHtml(kind, id, key){
+  return '<button class="grip" data-grip="' + kind + '" data-id="' + id + '"' +
+         (key ? ' data-list="' + key + '"' : "") +
+         ' title="Drag to reorder — or focus and use the arrow keys" aria-label="Reorder">' +
+         '<svg width="10" height="14" viewBox="0 0 10 14" aria-hidden="true"><g fill="currentColor">' +
+         '<circle cx="2" cy="2" r="1.3"/><circle cx="8" cy="2" r="1.3"/>' +
+         '<circle cx="2" cy="7" r="1.3"/><circle cx="8" cy="7" r="1.3"/>' +
+         '<circle cx="2" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/>' +
+         '</g></svg></button>';
+}
+
+/* The options list. Enter in any box opens a new one underneath. */
+function optsHtml(it, key){
+  const list = Array.isArray(it.options) ? it.options : [];
+  const rows = (list.length ? list : [""]).map((v,i) =>
+    '<div class="opt">' +
+      '<span class="optkey">' + String.fromCharCode(97+i) + '</span>' +
+      '<input class="optin" data-opt="' + i + '" data-item="' + it._id + '" data-list="' + key + '"' +
+        ' value="' + esc(v) + '"' +
+        (i === 0 ? ' placeholder="What the player can pick"' : "") + '>' +
+      '<button class="btn tiny ghost danger" data-act="optdel" data-list="' + key + '"' +
+        ' data-item="' + it._id + '" data-opt="' + i + '" title="Remove this option">&times;</button>' +
+    '</div>').join("");
+
+  return '<div class="fld s12" data-optsfor="' + it._id + '">' +
+    '<span>Options</span>' +
+    '<div class="opts">' + rows + '</div>' +
+    '<div class="opts-foot">' +
+      '<span class="opts-hint">Enter adds another &middot; Backspace on an empty one removes it</span>' +
+    '</div>' +
+  '</div>';
+}
+
+function itemFromEl(el){
+  const p = current(); if (!p) return null;
+  const arr = p[el.dataset.list]; if (!arr) return null;
+  return arr.find(x => x._id === el.dataset.item) || null;
+}
+
+function repaintOpts(it, key, focusIdx, toEnd){
+  const wrap = document.querySelector('[data-optsfor="' + it._id + '"]');
+  if (!wrap) return;
+  wrap.outerHTML = optsHtml(it, key);
+  if (focusIdx == null) return;
+  const boxes = document.querySelectorAll('[data-optsfor="' + it._id + '"] .optin');
+  const box = boxes[Math.min(focusIdx, boxes.length - 1)];
+  if (box){
+    box.focus();
+    const at = toEnd ? box.value.length : 0;
+    try { box.setSelectionRange(at, at); } catch(e){}
+  }
+}
+
+function onOptKey(e){
+  const el = e.target;
+  if (!el.classList || !el.classList.contains("optin")) return;
+  const it = itemFromEl(el); if (!it) return;
+  if (!Array.isArray(it.options)) it.options = [];
+  const i = Number(el.dataset.opt);
+
+  if (e.key === "Enter"){
+    e.preventDefault();
+    while (it.options.length <= i) it.options.push("");
+    it.options.splice(i + 1, 0, "");
+    repaintOpts(it, el.dataset.list, i + 1);
+    touch();
+    return;
+  }
+  if (e.key === "Backspace" && el.value === "" && it.options.length > 1){
+    e.preventDefault();
+    it.options.splice(i, 1);
+    repaintOpts(it, el.dataset.list, Math.max(0, i - 1), true);
+    touch();
+    return;
+  }
+  if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+    const boxes = Array.from(el.closest(".opts").querySelectorAll(".optin"));
+    const next = boxes[boxes.indexOf(el) + (e.key === "ArrowDown" ? 1 : -1)];
+    if (next){
+      e.preventDefault(); next.focus();
+      try { next.setSelectionRange(next.value.length, next.value.length); } catch(err){}
+    }
+  }
+}
+
+/* ============================================================
+   8b. DRAG TO REORDER
+   Only the grip starts a drag, so text boxes keep working normally.
+   ============================================================ */
+let drag = null;
+let dragEndedAt = 0;
+let edgeTimer = null;
+
+function gripDown(e, grip){
+  if (e.button != null && e.button !== 0) return;
+  const el = grip.closest(".period, .item");
+  if (!el) return;
+  const box = el.getBoundingClientRect();
+  drag = {
+    el, grip,
+    container: el.parentElement,
+    sel: el.classList.contains("period") ? ".period" : ".item",
+    listKey: grip.dataset.list || null,
+    startY: e.clientY,
+    grabY: e.clientY - box.top,
+    height: box.height,
+    width: box.width,
+    engaged: false,
+    lastY: e.clientY
+  };
+  try { grip.setPointerCapture(e.pointerId); } catch(err){}
+  e.preventDefault();
+}
+
+function engageDrag(){
+  const d = drag, el = d.el, cbox = d.container.getBoundingClientRect();
+  const ebox = el.getBoundingClientRect();
+
+  const ph = document.createElement("div");
+  ph.className = "drop-ph";
+  ph.style.height = d.height + "px";
+  ph.style.marginBottom = getComputedStyle(el).marginBottom;
+  d.container.insertBefore(ph, el.nextSibling);
+  d.ph = ph;
+
+  d.left = ebox.left - cbox.left;
+  el.classList.add("dragging");
+  el.style.position = "absolute";
+  el.style.zIndex = "30";
+  el.style.width = d.width + "px";
+  el.style.left = d.left + "px";
+  el.style.margin = "0";
+  document.body.classList.add("is-dragging");
+  d.engaged = true;
+
+  edgeTimer = setInterval(edgeScroll, 16);
+}
+
+function placeDrag(y){
+  const d = drag;
+  const cbox = d.container.getBoundingClientRect();
+  d.el.style.top = (y - d.grabY - cbox.top) + "px";
+
+  const sibs = Array.from(d.container.querySelectorAll(":scope > " + d.sel))
+                    .filter(n => n !== d.el);
+  let before = null;
+  for (const n of sibs){
+    const r = n.getBoundingClientRect();
+    if (y < r.top + r.height / 2){ before = n; break; }
+  }
+  if (d.ph.nextSibling !== before) d.container.insertBefore(d.ph, before);
+}
+
+function edgeScroll(){
+  if (!drag || !drag.engaged) return;
+  const y = drag.lastY, pad = 90;
+  if (y < pad)                     window.scrollBy(0, -Math.ceil((pad - y) / 6));
+  else if (y > innerHeight - pad)  window.scrollBy(0,  Math.ceil((y - innerHeight + pad) / 6));
+  placeDrag(y);
+}
+
+function gripMove(e){
+  if (!drag) return;
+  drag.lastY = e.clientY;
+  if (!drag.engaged){
+    if (Math.abs(e.clientY - drag.startY) < 4) return;
+    engageDrag();
+  }
+  placeDrag(e.clientY);
+}
+
+function gripUp(e){
+  if (!drag) return;
+  const d = drag; drag = null;
+  clearInterval(edgeTimer); edgeTimer = null;
+  try { d.grip.releasePointerCapture(e.pointerId); } catch(err){}
+  if (!d.engaged) return;
+
+  d.container.insertBefore(d.el, d.ph);
+  d.ph.remove();
+  d.el.classList.remove("dragging");
+  d.el.style.cssText = "";
+  document.body.classList.remove("is-dragging");
+  dragEndedAt = Date.now();
+
+  const ids = Array.from(d.container.querySelectorAll(":scope > " + d.sel))
+                   .map(n => n.dataset.id || n.dataset.item);
+  if (d.sel === ".period") reorderByDom(state.periods, "id", ids);
+  else {
+    const p = current();
+    if (p && p[d.listKey]) reorderByDom(p[d.listKey], "_id", ids);
+  }
+  renderAll(); touch();
+}
+
+/* Reorders only the rows that are actually on screen, leaving anything
+   hidden by the search filter sitting where it was. */
+function reorderByDom(arr, key, ids){
+  const slots = [];
+  arr.forEach((x,i) => { if (ids.indexOf(x[key]) !== -1) slots.push(i); });
+  const byId = new Map(arr.map(x => [x[key], x]));
+  ids.forEach((id,n) => { if (slots[n] != null && byId.has(id)) arr[slots[n]] = byId.get(id); });
+}
+
+/* Keyboard: focus a grip, press up/down. */
+function gripKey(e, grip){
+  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+  e.preventDefault();
+  const delta = e.key === "ArrowUp" ? -1 : 1;
+  const id = grip.dataset.id;
+  let ok = false;
+  if (grip.dataset.grip === "period"){
+    ok = move(state.periods, state.periods.findIndex(x => x.id === id), delta);
+  } else {
+    const p = current(); const arr = p && p[grip.dataset.list];
+    if (arr) ok = move(arr, arr.findIndex(x => x._id === id), delta);
+  }
+  if (!ok) return;
+  renderAll(); touch();
+  const again = document.querySelector('.grip[data-id="' + id + '"]');
+  if (again) again.focus();
+}
+
+/* ============================================================
+   8. OPENING / CLOSING
+   ============================================================ */
+function openPeriod(id){
+  openId = id; tab = "overview"; collapsed = new Set();
+  $("#stage").classList.add("open");
+  renderTimeline(); renderDetail();
+  if (window.matchMedia && window.matchMedia("(max-width:920px)").matches){
+    window.scrollTo({ top:0, behavior:"smooth" });
+  }
+}
+
+function closeDetail(){
+  openId = null;
+  $("#stage").classList.remove("open");
+  $("#detail").innerHTML = "";
+  renderTimeline();
+}
+
+function renderAll(){
+  renderTimeline();
+  if (openId) renderDetail();
+}
+
+/* ============================================================
+   9. EDITING — one listener handles every box on the page
+   ============================================================ */
+function onInput(e){
+  const el = e.target;
+
+  if (el.classList && el.classList.contains("optin")){
+    const it = itemFromEl(el); if (!it) return;
+    if (!Array.isArray(it.options)) it.options = [];
+    const i = Number(el.dataset.opt);
+    while (it.options.length <= i) it.options.push("");
+    it.options[i] = el.value;
+    touch(); return;
+  }
+
+  const f = el.dataset.f;
+  if (!f) return;
+
+  if (el.dataset.proj !== undefined){
+    state[f] = el.value;
+  }
+  else if (el.dataset.list){
+    const p = current(); if (!p) return;
+    const it = p[el.dataset.list].find(x => x._id === el.dataset.item);
+    if (!it) return;
+    it[f] = el.value;
+    syncItemTitle(el, el.dataset.list, it);
+  }
+  else {
+    const pid = el.dataset.p || openId;
+    const p = period(pid); if (!p) return;
+    p[f] = el.value;
+    mirror(pid, f, el.value, el);
+  }
+
+  if (el.tagName === "TEXTAREA") autosize(el);
+  touch();
+}
+
+/* keep the timeline card and the page header showing the same text */
+function mirror(pid, f, v, src){
+  $$('[data-f="' + f + '"]').forEach(el => {
+    if (el === src || el.dataset.list || el.dataset.proj !== undefined) return;
+    const owner = el.dataset.p || openId;
+    if (owner === pid && el.value !== v) el.value = v;
+  });
+}
+
+function syncItemTitle(el, key, it){
+  const box = el.closest(".item"); if (!box) return;
+  const name = LISTS[key].title(it);
+  const h = box.querySelector(".ititle");
+  h.textContent = name || ("Untitled " + LISTS[key].one);
+  h.classList.toggle("empty", !name);
+}
+
+/* ============================================================
+   10. BUTTONS
+   ============================================================ */
+function handleAct(b){
+  const act = b.dataset.act;
+  const p   = b.dataset.p ? period(b.dataset.p) : current();
+
+  if (act === "close"){ closeDetail(); return; }
+
+  if (act === "delp"){
+    if (!confirm('Delete "' + (p.title || "this period") + '" and everything in it?')) return;
+    state.periods = state.periods.filter(x => x.id !== p.id);
+    if (openId === p.id) closeDetail(); else renderAll();
+    touch(); toast("Period deleted");
+    return;
+  }
+
+  if (act === "color"){ p.color = Number(b.dataset.i); renderAll(); touch(); return; }
+
+  const key = b.dataset.list;
+  if (!key || !p) return;
+  const arr = p[key];
+
+  if (act === "optdel"){
+    const it = arr.find(x => x._id === b.dataset.item);
+    if (it && Array.isArray(it.options) && it.options.length > 1){
+      it.options.splice(Number(b.dataset.opt), 1);
+      repaintOpts(it, key, null);
+      touch();
+    }
+    return;
+  }
+
+  if (act === "iadd"){
+    const it = { _id: uid() };
+    arr.push(it);
+    renderAll(); touch();
+    const box = document.querySelector('.item[data-item="' + it._id + '"] input');
+    if (box) box.focus();
+    return;
+  }
+
+  const i = arr.findIndex(x => x._id === b.dataset.item);
+  if (i === -1) return;
+
+  if (act === "idel"){
+    arr.splice(i,1); renderAll(); touch(); toast("Deleted");
+    return;
+  }
+  if (act === "code"){
+    copyText(LISTS[key].code(arr[i]));
+    return;
+  }
+}
+
+function toggleItem(id){
+  if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+  const box = document.querySelector('.item[data-item="' + id + '"]');
+  if (box){ box.classList.toggle("collapsed"); autosizeAll(box); }
+}
+
+async function copyText(txt){
+  try { await navigator.clipboard.writeText(txt); toast("Code copied"); return; }
+  catch(e){ /* older browsers / file:// */ }
+  const ta = document.createElement("textarea");
+  ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); toast("Code copied"); }
+  catch(_){ toast("Couldn't copy — check the browser's clipboard permission"); }
+  ta.remove();
+}
+
+/* ============================================================
+   11. FILES
+   ============================================================ */
+function exportJSON(){
+  const name = (state.title || "timeline").toLowerCase()
+    .replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "timeline";
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type:"application/json" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = name + ".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast("Exported " + name + ".json");
+}
+
+function normalise(d){
+  d.title    = d.title    || "Mod Timeline";
+  d.subtitle = d.subtitle || "";
+  d.periods  = (d.periods || []).map(raw => {
+    const p = newPeriod();
+    Object.assign(p, raw);
+    p.id    = raw.id || uid();
+    p.color = Number(p.color) || 0;
+    Object.keys(LISTS).forEach(k => {
+      p[k] = Array.isArray(raw[k])
+        ? raw[k].map(it => {
+            const row = it._id ? it : Object.assign({ _id: uid() }, it);
+            if (typeof row.options === "string"){
+              row.options = row.options.split("\n").map(t => t.trim()).filter(Boolean);
+            }
+            return row;
+          })
+        : [];
+    });
+    return p;
+  });
+  return d;
+}
+
+function hydrateHeader(){
+  $("#projTitle").value = state.title;
+  $("#projSub").value   = state.subtitle;
+}
+
+/* ============================================================
+   12. WIRING IT UP
+   ============================================================ */
+function wire(){
+  document.addEventListener("input", onInput);
+
+  document.addEventListener("pointerdown", e => {
+    const grip = e.target.closest("[data-grip]");
+    if (grip) gripDown(e, grip);
+  });
+  document.addEventListener("pointermove", gripMove);
+  document.addEventListener("pointerup", gripUp);
+  document.addEventListener("pointercancel", gripUp);
+
+  document.addEventListener("keydown", e => {
+    const grip = e.target.closest && e.target.closest("[data-grip]");
+    if (grip){ gripKey(e, grip); return; }
+    onOptKey(e);
+  });
+
+  document.addEventListener("click", e => {
+    if (e.target.closest("[data-grip]")) return;
+    if (Date.now() - dragEndedAt < 250) return;
+    const act = e.target.closest("[data-act]");
+    if (act){ e.preventDefault(); handleAct(act); return; }
+
+    const tb = e.target.closest("[data-tab]");
+    if (tb){ tab = tb.dataset.tab; renderDetail(); return; }
+
+    const tog = e.target.closest("[data-toggle]");
+    if (tog){ toggleItem(tog.dataset.toggle); return; }
+
+    const card = e.target.closest("[data-open]");
+    if (card && !e.target.closest("input,textarea,select,button")){
+      openPeriod(card.dataset.open);
+    }
+  });
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && openId && !e.target.closest(".optin")){ closeDetail(); }
+  });
+
+  const addPeriod = () => {
+    const p = newPeriod({ title:"", date:"" });
+    state.periods.push(p);
+    renderTimeline(); touch();
+    openPeriod(p.id);
+    const t = document.querySelector(".dtitle"); if (t) t.focus();
+  };
+  $("#btnAdd").addEventListener("click", addPeriod);
+  $("#btnAdd2").addEventListener("click", addPeriod);
+
+  $("#btnExport").addEventListener("click", exportJSON);
+  $("#btnImport").addEventListener("click", () => $("#fileInput").click());
+
+  $("#fileInput").addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!data || !Array.isArray(data.periods)) throw new Error("shape");
+        state = normalise(data);
+        openId = null; filter = "";
+        $("#searchInput").value = "";
+        $("#searchbar").classList.remove("on");
+        $("#stage").classList.remove("open");
+        $("#detail").innerHTML = "";
+        hydrateHeader(); renderTimeline(); touch();
+        toast("Loaded " + state.periods.length + " periods");
+      } catch(err){
+        toast("That file isn't a timeline project");
+      }
+      e.target.value = "";
+    };
+    reader.readAsText(file);
+  });
+
+  $("#btnNew").addEventListener("click", () => {
+    if (!confirm("Start an empty timeline? This replaces what's on screen — export first if you want to keep it.")) return;
+    state = { title:"Mod Timeline", subtitle:"", periods:[ newPeriod({ title:"First period" }) ] };
+    openId = null; filter = "";
+    $("#searchInput").value = "";
+    $("#stage").classList.remove("open");
+    $("#detail").innerHTML = "";
+    hydrateHeader(); renderTimeline(); touch();
+  });
+
+  $("#btnOutline").addEventListener("click", () => {
+    if (!confirm("Load the American Dream outline? This replaces what's on screen \u2014 export first if you want to keep it.")) return;
+    state = starterProject();
+    openId = null; filter = "";
+    $("#searchInput").value = "";
+    $("#stage").classList.remove("open");
+    $("#detail").innerHTML = "";
+    hydrateHeader(); renderTimeline(); touch();
+    toast("Outline loaded");
+  });
+
+  $("#btnSearch").addEventListener("click", () => {
+    const bar = $("#searchbar");
+    bar.classList.toggle("on");
+    if (bar.classList.contains("on")) $("#searchInput").focus();
+    else { filter = ""; $("#searchInput").value = ""; renderTimeline(); }
+  });
+
+  $("#searchInput").addEventListener("input", e => {
+    filter = e.target.value.trim().toLowerCase();
+    renderTimeline();
+  });
+
+  window.addEventListener("beforeunload", () => { if (saveTimer) Store.save(state); });
+}
+
+/* ============================================================
+   13. START
+   ============================================================ */
+(async function init(){
+  $("#dl-ideology").innerHTML = IDEOLOGIES.map(v => '<option value="' + esc(v) + '">').join("");
+  $("#dl-role").innerHTML     = ROLES.map(v => '<option value="' + esc(v) + '">').join("");
+
+  const saved = await Store.load();
+  state = saved ? normalise(saved) : starterProject();
+
+  hydrateHeader();
+  renderTimeline();
+  wire();
+  $("#saveState").textContent = saved ? "loaded" : "new project";
+})();
+</script>
+</body>
+</html>
