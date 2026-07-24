@@ -4,7 +4,7 @@
 
 🌐 **[theamericandreammod.site](https://theamericandreammod.site)** &nbsp;•&nbsp; 💬 **[Discord](https://discord.com/invite/GmhqdGmyEB)** &nbsp;•&nbsp; 🎮 Steam Workshop *(coming)*
 
-This repository hosts the mod's public website — the roadmap page and the timeline planner. The mod itself is developed separately; everything here is the front end.
+This repository hosts the mod's public website; the roadmap page and the timeline planner. The mod itself is developed separately; everything here is the front end.
 
 ---
 
