@@ -138,9 +138,12 @@
   .swatch.progress{ background:linear-gradient(135deg, var(--marker) 50%, #fff 50%); }
   .swatch.planned{  background:#fff; }
 
-  /* ---- link across to the timeline planner ---- */
-  .legend .tool-link{
+  /* ---- links across to the companion tools ---- */
+  .legend .tools{
     margin-left:auto;
+    display:flex; flex-direction:column; align-items:stretch; gap:8px;
+  }
+  .legend .tool-link{
     display:inline-flex; align-items:center; gap:9px;
     padding:7px 13px;
     border:1px solid var(--line);
@@ -155,7 +158,7 @@
     width:9px; height:9px; flex:0 0 auto;
     border:1.5px solid currentColor;
   }
-  .legend .tool-link .arrow{ transition:transform .16s; }
+  .legend .tool-link .arrow{ margin-left:auto; padding-left:14px; transition:transform .16s; }
   .legend .tool-link:hover{
     color:var(--accent);
     border-color:var(--accent);
@@ -164,7 +167,7 @@
   .legend .tool-link:hover .arrow{ transform:translateX(3px); }
   .legend .tool-link:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   @media (max-width:620px){
-    .legend .tool-link{ margin-left:0; }
+    .legend .tools{ margin-left:0; width:100%; }
   }
 
   /* ---- the horizontal timeline rail ---- */
@@ -292,9 +295,14 @@
     <span><i class="swatch progress"></i> In progress</span>
     <span><i class="swatch planned"></i> Planned</span>
 
-    <a class="tool-link" href="timeline.html" title="Plan the mod's story timeline">
-      <i class="mark"></i>Timeline planner<span class="arrow">&rarr;</span>
-    </a>
+    <div class="tools">
+      <a class="tool-link" href="events.html" title="Write country and news events and export them as mod files">
+        <i class="mark"></i>Event maker<span class="arrow">&rarr;</span>
+      </a>
+      <a class="tool-link" href="timeline.html" title="Plan the mod's story timeline">
+        <i class="mark"></i>Timeline planner<span class="arrow">&rarr;</span>
+      </a>
+    </div>
   </div>
 
   <div class="rail-wrap">

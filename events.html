@@ -1,0 +1,2300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event Maker — The American Dream</title>
+<meta name="description" content="Write Hearts of Iron IV country and news events, then export them as ready-to-drop mod files: events, localisation, on_actions and DDS pictures.">
+<style>
+:root{
+  --paper:#F5F6F2; --card:#FFFFFF; --sunk:#EFF1EC;
+  --ink:#14171A; --ink2:#5A6169; --ink3:#8A9199;
+  --line:#DEE1DA; --line2:#C9CDC3;
+  --country:#1F3A5F; --news:#A33A2A; --ok:#3E6B4A; --warn:#8A6A18;
+  --font-ui:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --r:6px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--font-ui); font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--country); outline-offset:2px}
+
+/* ---------- structure ---------- */
+.app{display:flex; flex-direction:column; height:100vh; overflow:hidden}
+.topbar{
+  display:flex; align-items:center; gap:14px; padding:0 16px; height:52px;
+  background:var(--card); border-bottom:1px solid var(--line); flex:none;
+}
+.brand{font-weight:700; letter-spacing:-.01em; font-size:15px; white-space:nowrap}
+.brand span{color:var(--ink3); font-weight:500}
+.back{
+  display:inline-flex; align-items:center; gap:6px; text-decoration:none;
+  font-family:var(--font-mono); font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink3); border:1px solid var(--line); border-radius:var(--r);
+  padding:5px 10px; white-space:nowrap;
+}
+.back:hover{color:var(--country); border-color:#a9bed6; background:var(--sunk)}
+@media (max-width:760px){ .back span{display:none} }
+.ns-wrap{display:flex; align-items:center; gap:7px; margin-left:6px}
+.ns-wrap label{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); font-weight:600}
+.ns-input{
+  font-family:var(--font-mono); font-size:12.5px; padding:5px 8px; width:190px;
+  border:1px solid var(--line2); border-radius:var(--r); background:var(--sunk);
+}
+.spacer{flex:1}
+.btn{
+  border:1px solid var(--line2); background:var(--card); border-radius:var(--r);
+  padding:6px 11px; font-size:13px; font-weight:500; white-space:nowrap;
+}
+.btn:hover{background:var(--sunk)}
+.btn.primary{background:var(--country); border-color:var(--country); color:#fff}
+.btn.primary:hover{background:#162943}
+.btn.ghost{border-color:transparent; background:transparent; color:var(--ink2)}
+.btn.ghost:hover{background:var(--sunk); color:var(--ink)}
+.btn.sm{padding:3px 8px; font-size:12px}
+.btn.danger:hover{background:#fbeceb; border-color:#e2b6b0; color:var(--news)}
+
+.body{display:flex; flex:1; min-height:0}
+
+/* ---------- sidebar ---------- */
+.side{
+  width:246px; flex:none; background:var(--card); border-right:1px solid var(--line);
+  display:flex; flex-direction:column; min-height:0;
+}
+.side-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:11px 12px 9px; border-bottom:1px solid var(--line);
+}
+.side-head h2{margin:0; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); font-weight:700}
+.side-list{overflow-y:auto; padding:7px; flex:1}
+.ev-item{
+  display:flex; align-items:flex-start; gap:8px; width:100%; text-align:left;
+  padding:8px 9px; border-radius:var(--r); border:1px solid transparent; background:none;
+  margin-bottom:2px;
+}
+.ev-item:hover{background:var(--sunk)}
+.ev-item.sel{background:var(--sunk); border-color:var(--line2)}
+.ev-dot{width:3px; align-self:stretch; border-radius:2px; flex:none; background:var(--country)}
+.ev-item[data-t="news"] .ev-dot{background:var(--news)}
+.ev-main{min-width:0; flex:1}
+.ev-title{font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ev-title.empty{color:var(--ink3); font-weight:400; font-style:italic}
+.ev-meta{font-family:var(--font-mono); font-size:10.5px; color:var(--ink3); margin-top:1px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.side-foot{padding:9px 12px; border-top:1px solid var(--line); font-size:11.5px; color:var(--ink3)}
+
+/* ---------- main ---------- */
+.main{flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden}
+.tabs{display:flex; gap:0; padding:0 20px; background:var(--card); border-bottom:1px solid var(--line); flex:none}
+.tab{
+  border:1px solid var(--line); border-bottom:none; background:var(--sunk);
+  padding:9px 26px; margin:9px 5px -1px 0; border-radius:var(--r) var(--r) 0 0;
+  font-size:13px; font-weight:600; color:var(--ink2); position:relative;
+}
+.tab:hover{color:var(--ink)}
+.tab.on{background:var(--card); color:var(--ink); border-color:var(--line)}
+.tab.on::after{content:""; position:absolute; left:0; right:0; bottom:-1px; height:1px; background:var(--card)}
+.tab.on[data-t="country"]{box-shadow:inset 0 3px 0 var(--country)}
+.tab.on[data-t="news"]{box-shadow:inset 0 3px 0 var(--news)}
+
+.scroll{overflow-y:auto; flex:1; padding:20px 20px 80px}
+.cols{display:grid; grid-template-columns:minmax(0,1fr) 336px; gap:20px; align-items:start; max-width:1240px}
+@media (max-width:1080px){ .cols{grid-template-columns:minmax(0,1fr)} }
+
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); margin-bottom:16px}
+.card-h{
+  display:flex; align-items:center; gap:9px; padding:10px 14px; border-bottom:1px solid var(--line);
+}
+.card-h h3{margin:0; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); font-weight:700}
+.card-b{padding:14px}
+
+.field{margin-bottom:13px}
+.field:last-child{margin-bottom:0}
+.field > label{display:block; font-size:12px; font-weight:600; color:var(--ink2); margin-bottom:5px}
+.hint{font-size:11.5px; color:var(--ink3); margin-top:5px; line-height:1.4}
+input[type=text],input[type=number],select,textarea{
+  width:100%; border:1px solid var(--line2); border-radius:var(--r); background:var(--card);
+  padding:7px 9px; font-size:13px;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--country); outline:none;
+  box-shadow:0 0 0 3px rgba(31,58,95,.09)}
+textarea{resize:vertical; font-family:var(--font-mono); font-size:12.5px; line-height:1.55}
+.mono{font-family:var(--font-mono)}
+.row{display:flex; gap:10px; flex-wrap:wrap}
+.row > *{flex:1; min-width:120px}
+.chk{display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink2); cursor:pointer}
+.chk input{width:auto; margin:0}
+
+/* title/desc splitter */
+.split-note{
+  display:flex; gap:8px; align-items:baseline; font-size:11.5px; margin-top:6px;
+  padding:7px 9px; background:var(--sunk); border-radius:var(--r); border:1px solid var(--line);
+}
+.split-note b{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3)}
+.split-note span{font-family:var(--font-mono); color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.split-note span.none{color:var(--ink3); font-style:italic; font-family:var(--font-ui)}
+
+/* image */
+.drop{
+  border:1.5px dashed var(--line2); border-radius:var(--r); background:var(--sunk);
+  padding:18px; text-align:center; color:var(--ink2); font-size:12.5px; cursor:pointer;
+}
+.drop:hover,.drop.over{border-color:var(--country); background:#eef2f7; color:var(--country)}
+.pic-row{display:flex; gap:12px; align-items:flex-start}
+.pic-prev{border:1px solid var(--line2); border-radius:3px; background:var(--sunk); flex:none; display:block}
+.pic-info{font-size:12px; color:var(--ink2); min-width:0; flex:1}
+.pic-info .name{font-family:var(--font-mono); font-size:12px; word-break:break-all; color:var(--ink)}
+.tag{
+  display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  padding:2px 6px; border-radius:3px; margin:5px 5px 0 0;
+}
+.tag.ok{background:#e7f0e9; color:var(--ok)}
+.tag.fix{background:#fbf3e0; color:var(--warn)}
+
+/* options */
+.opt{border:1px solid var(--line2); border-radius:var(--r); margin-bottom:9px; overflow:hidden; background:var(--card)}
+.opt-bar{
+  display:flex; align-items:center; gap:10px; width:100%; background:none; border:none;
+  padding:10px 12px; text-align:left;
+}
+.opt-bar:hover{background:var(--sunk)}
+.tri{flex:none; width:11px; height:11px; transition:transform .16s ease; color:var(--ink2)}
+.opt.open .tri{transform:rotate(90deg)}
+.opt-key{font-family:var(--font-mono); font-size:11.5px; color:var(--ink3); flex:none}
+.opt-name{flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.opt-name.empty{color:var(--ink3); font-style:italic}
+.opt-flags{display:flex; gap:4px; flex:none}
+.pip{font-size:9.5px; font-weight:700; letter-spacing:.05em; padding:2px 5px; border-radius:3px;
+  background:var(--sunk); color:var(--ink3); border:1px solid var(--line)}
+.pip.on{background:#eef2f7; color:var(--country); border-color:#c6d3e2}
+.opt-body{display:none; padding:0 12px 13px; border-top:1px solid var(--line)}
+.opt.open .opt-body{display:block}
+.opt-body .field:first-child{margin-top:13px}
+
+.varbar{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:7px}
+.varbtn{border:1px solid var(--line2); background:var(--card); border-radius:var(--r);
+  padding:4px 9px; font-size:12px; font-weight:600; color:var(--ink2); display:flex; align-items:center; gap:5px}
+.varbtn:hover{background:var(--sunk)}
+.varbtn.on{background:#eef2f7; border-color:#a9bed6; color:var(--country)}
+.varbtn.on[data-v="chaos"]{background:#fbeceb; border-color:#e2b6b0; color:var(--news)}
+.varbtn .tick{width:11px; height:11px; flex:none; opacity:.35}
+.varbtn.on .tick{opacity:1}
+.varnum{width:62px; padding:4px 6px; font-size:12px; font-family:var(--font-mono)}
+.varnum[disabled]{opacity:.4; background:var(--sunk)}
+.chip{border:1px solid var(--line2); background:var(--card); border-radius:var(--r);
+  padding:3px 8px; font-size:11.5px; font-family:var(--font-mono); color:var(--ink2)}
+.chip:hover{background:var(--sunk); color:var(--ink)}
+
+.eff-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; gap:8px}
+.eff-head label{margin:0}
+.eff-tools{display:flex; gap:5px}
+
+/* picker */
+.pick-wrap{position:relative}
+.pick{
+  position:absolute; z-index:40; top:calc(100% + 5px); right:0; width:390px; max-width:88vw;
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r);
+  box-shadow:0 10px 30px rgba(20,23,26,.14); overflow:hidden;
+}
+.pick-top{display:flex; gap:0; border-bottom:1px solid var(--line)}
+.pick-tab{flex:1; border:none; background:var(--sunk); padding:8px; font-size:12px; font-weight:600; color:var(--ink2)}
+.pick-tab.on{background:var(--card); color:var(--ink); box-shadow:inset 0 -2px 0 var(--country)}
+.pick-search{padding:9px 10px; border-bottom:1px solid var(--line)}
+.pick-search input{font-family:var(--font-mono); font-size:12.5px}
+.pick-list{max-height:280px; overflow-y:auto}
+.pick-grp{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); font-weight:700;
+  padding:8px 12px 3px; background:var(--card); position:sticky; top:0}
+.pick-it{display:block; width:100%; text-align:left; border:none; background:none; padding:6px 12px}
+.pick-it:hover,.pick-it.cur{background:var(--sunk)}
+.pick-it .k{font-family:var(--font-mono); font-size:12px; color:var(--ink)}
+.pick-it .d{font-size:11px; color:var(--ink3); line-height:1.35}
+.pick-empty{padding:18px 12px; text-align:center; color:var(--ink3); font-size:12.5px}
+.pick-foot{padding:8px 10px; border-top:1px solid var(--line); background:var(--sunk); font-size:11px; color:var(--ink3)}
+
+/* modifier basket */
+.mod-basket{padding:9px 10px; border-top:1px solid var(--line); background:var(--sunk)}
+.mod-chip{display:inline-flex; align-items:center; gap:5px; background:var(--card); border:1px solid var(--line2);
+  border-radius:3px; padding:2px 4px 2px 7px; margin:0 4px 4px 0; font-family:var(--font-mono); font-size:11px}
+.mod-chip input{width:56px; padding:1px 4px; font-size:11px; border-radius:2px}
+.mod-chip button{border:none; background:none; color:var(--ink3); padding:0 3px; font-size:14px; line-height:1}
+.mod-chip button:hover{color:var(--news)}
+
+/* preview */
+.prev-card{position:sticky; top:0}
+.prev-win{background:var(--sunk); border:1px solid var(--line2); border-radius:3px; padding:12px}
+.prev-pic{
+  width:100%; border:1px solid var(--line2); background:#e2e5de; display:block; border-radius:2px;
+  object-fit:cover;
+}
+.prev-pic-ph{display:flex; align-items:center; justify-content:center; color:var(--ink3); font-size:11.5px}
+.prev-title{font-size:14.5px; font-weight:700; margin:11px 0 6px; line-height:1.3}
+.prev-desc{font-size:12.5px; color:var(--ink2); white-space:pre-wrap; line-height:1.5; max-height:220px; overflow-y:auto}
+.prev-tt{font-size:12px; color:var(--country); border-left:2px solid var(--country); padding-left:8px; margin-top:9px}
+.prev-opts{margin-top:12px; display:flex; flex-direction:column; gap:5px}
+.prev-opt{background:var(--card); border:1px solid var(--line2); border-radius:3px; padding:6px 9px; font-size:12.5px}
+.prev-opt.empty{color:var(--ink3); font-style:italic}
+.prev-meta{margin-top:11px; padding-top:10px; border-top:1px solid var(--line);
+  font-family:var(--font-mono); font-size:11px; color:var(--ink3); line-height:1.7}
+.prev-meta b{color:var(--ink2); font-weight:600}
+
+/* empty state */
+.empty-state{max-width:420px; margin:70px auto; text-align:center; color:var(--ink2)}
+.empty-state h2{font-size:17px; margin:0 0 8px; color:var(--ink)}
+.empty-state p{font-size:13px; margin:0 0 18px; line-height:1.55}
+
+/* modal */
+.veil{position:fixed; inset:0; background:rgba(20,23,26,.4); display:flex; align-items:center;
+  justify-content:center; z-index:100; padding:20px}
+.modal{background:var(--card); border-radius:8px; width:520px; max-width:100%; max-height:86vh;
+  overflow-y:auto; box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal-h{padding:14px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center}
+.modal-h h3{margin:0; font-size:14px}
+.modal-b{padding:18px}
+.modal-f{padding:12px 18px; border-top:1px solid var(--line); display:flex; gap:8px; justify-content:flex-end}
+.opt-radio{display:block; border:1px solid var(--line2); border-radius:var(--r); padding:11px 13px; margin-bottom:9px; cursor:pointer}
+.opt-radio:hover{background:var(--sunk)}
+.opt-radio.on{border-color:var(--country); background:#f2f6fa}
+.opt-radio strong{display:block; font-size:13px; margin-bottom:3px}
+.opt-radio small{color:var(--ink2); font-size:11.5px; line-height:1.45; display:block}
+.opt-radio input{width:auto; margin-right:7px}
+
+.btn.check{border-color:#c3d6c8; background:#f0f6f1; color:var(--ok); font-weight:600}
+.btn.check:hover{background:#e5efe7}
+.btn.check.has-warn{border-color:#e3d3a6; background:#fbf6e8; color:var(--warn)}
+.btn.check.has-warn:hover{background:#f6efdb}
+.btn.check.has-err{border-color:#e2b6b0; background:#fbeceb; color:var(--news)}
+.btn.check.has-err:hover{background:#f7e0dd}
+
+.igrp{margin-bottom:4px}
+.issue{display:flex; gap:10px; align-items:flex-start; width:100%; text-align:left;
+  border:1px solid var(--line); border-radius:var(--r); background:var(--card);
+  padding:9px 11px; margin-bottom:6px}
+.issue:hover{background:var(--sunk)}
+.issue .lv{flex:none; font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  padding:3px 6px; border-radius:3px; margin-top:1px; min-width:56px; text-align:center}
+.issue.error{border-color:#e8cbc6}
+.issue.error .lv{background:#fbeceb; color:var(--news)}
+.issue.warn .lv{background:#fbf6e8; color:var(--warn)}
+.issue.info .lv{background:var(--sunk); color:var(--ink3)}
+.issue .ms{font-size:12.5px; line-height:1.45; color:var(--ink)}
+.issue.info .ms{color:var(--ink2)}
+
+.toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+  background:var(--ink); color:#fff; padding:9px 16px; border-radius:var(--r); font-size:13px;
+  z-index:200; box-shadow:0 6px 20px rgba(0,0,0,.25)}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important; animation:none!important} }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <a class="back" href="index.html" title="Back to the mod roadmap">&larr;<span>Roadmap</span></a>
+    <div class="brand">Event Maker <span>&middot; The American Dream</span></div>
+    <div class="ns-wrap">
+      <label for="ns">Namespace</label>
+      <input id="ns" class="ns-input mono" type="text" spellcheck="false" placeholder="my_events">
+    </div>
+    <div class="spacer"></div>
+    <button class="btn check" id="btnCheck">Checks pass</button>
+    <button class="btn ghost" id="btnSettings">Settings</button>
+    <button class="btn ghost" id="btnImport">Open project</button>
+    <button class="btn" id="btnSave">Save project</button>
+    <button class="btn primary" id="btnExport">Export mod files</button>
+  </div>
+
+  <div class="body">
+    <aside class="side">
+      <div class="side-head">
+        <h2>Events</h2>
+        <div style="display:flex;gap:4px">
+          <button class="btn sm" id="btnAddC">+ Country</button>
+          <button class="btn sm" id="btnAddN">+ News</button>
+        </div>
+      </div>
+      <div class="side-list" id="list"></div>
+      <div class="side-foot" id="sideFoot"></div>
+    </aside>
+
+    <main class="main" id="main"></main>
+  </div>
+</div>
+
+<input type="file" id="fileImg" accept="image/png,image/jpeg,image/webp" hidden>
+<input type="file" id="fileProj" accept="application/json,.json" hidden>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   0. Safe storage — localStorage where available, memory otherwise.
+      (Sandboxed previews block localStorage; saving the file to disk
+      and opening it locally gives real persistence.)
+   ===================================================================== */
+const store = (()=>{
+  let mem = {}, live = false;
+  try { localStorage.setItem("__t","1"); localStorage.removeItem("__t"); live = true; } catch(e){ live = false; }
+  return {
+    live,
+    get(k){ try { return live ? localStorage.getItem(k) : (k in mem ? mem[k] : null); } catch(e){ return k in mem ? mem[k] : null; } },
+    set(k,v){ try { if(live) localStorage.setItem(k,v); else mem[k]=v; return true; } catch(e){ mem[k]=v; return false; } }
+  };
+})();
+
+const uid = () => Math.random().toString(36).slice(2,10);
+const esc = s => String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const $  = s => document.querySelector(s);
+
+/* =====================================================================
+   1. Effect library — curated, grouped. Snippets use tab indentation
+      because that is what the game files use.
+   ===================================================================== */
+const EFFECTS = [
+["Political power / stability", [
+  ["add_political_power","add_political_power = 50","Adds political power."],
+  ["set_political_power","set_political_power = 100","Sets political power outright."],
+  ["add_stability","add_stability = 0.05","Adds stability. Range is 0 to 1, so 0.05 is five points."],
+  ["set_stability","set_stability = 0.5","Sets stability outright."],
+  ["add_war_support","add_war_support = 0.05","Adds war support. Range is 0 to 1."],
+  ["set_war_support","set_war_support = 0.5","Sets war support outright."],
+  ["add_command_power","add_command_power = 25","Adds command power."],
+  ["add_manpower","add_manpower = 10000","Adds manpower to the pool."],
+  ["add_stability + war support","add_stability = 0.03\nadd_war_support = -0.05","Common paired swing."],
+]],
+["Politics", [
+  ["set_politics","set_politics = {\n\truling_party = neutrality\n\tlast_election = \"2024.11.4\"\n\telection_frequency = 48\n\telections_allowed = yes\n}","Changes the ruling party and election setup."],
+  ["set_popularities","set_popularities = {\n\tdemocratic = 50\n\tneutrality = 15\n\tfascism = 30\n\tcommunism = 5\n}","Sets all party popularities. Must total 100 or it does nothing."],
+  ["add_popularity","add_popularity = {\n\tideology = neutrality\n\tpopularity = 0.05\n}","Shifts one party's popularity. Values are 0 to 1."],
+  ["set_party_name","set_party_name = {\n\tideology = neutrality\n\tlong_name = TAG_party_long\n\tname = TAG_party\n}","Renames a party."],
+  ["hold_election","hold_election = ROOT","Runs the on_new_term_election on_action."],
+  ["set_cosmetic_tag","set_cosmetic_tag = USA_second_republic","Swaps country name and flag."],
+  ["drop_cosmetic_tag","drop_cosmetic_tag = yes","Reverts to the normal name and flag."],
+]],
+["Characters and leaders", [
+  ["promote_character","promote_character = USA_Trump","Promotes a character to country leader. Only works if the character already has a country_leader role in that ideology group."],
+  ["add_country_leader_role","add_country_leader_role = {\n\tcharacter = TAG_person\n\tpromote_leader = yes\n\tcountry_leader = {\n\t\tideology = despotism\n\t\texpire = \"2049.1.1.1\"\n\t\ttraits = { }\n\t}\n}","Gives a character a leader role and promotes them. Use when promote_character alone leaves no portrait."],
+  ["add_country_leader_trait","add_country_leader_trait = trait_name","Adds a trait to the current country leader."],
+  ["remove_country_leader_trait","remove_country_leader_trait = trait_name","Removes a leader trait."],
+  ["add_advisor_role","add_advisor_role = {\n\tcharacter = TAG_person\n\tadvisor = {\n\t\tslot = political_advisor\n\t\tidea_token = TAG_person_advisor\n\t\tcost = 150\n\t\ttraits = { }\n\t}\n\tactivate = yes\n}","Adds and hires an advisor."],
+  ["retire_character","retire_character = TAG_person","Removes a character from play."],
+  ["set_nationality","TAG_person = { set_nationality = MEX }","Moves a character to another country."],
+]],
+["Ideas and modifiers", [
+  ["add_ideas","add_ideas = my_national_spirit","Adds a national spirit or idea. This is the simplest way to apply a lasting modifier."],
+  ["remove_ideas","remove_ideas = my_national_spirit","Removes an idea."],
+  ["add_timed_idea","add_timed_idea = {\n\tidea = my_national_spirit\n\tdays = 90\n}","Adds an idea that expires by itself."],
+  ["swap_ideas","swap_ideas = {\n\tremove_idea = old_spirit\n\tadd_idea = new_spirit\n}","Swaps one idea for another in the same slot."],
+  ["add_dynamic_modifier","add_dynamic_modifier = { modifier = my_dynamic_modifier }","Applies a dynamic modifier defined in common/dynamic_modifiers. Use the Modifiers tab to build one."],
+  ["remove_dynamic_modifier","remove_dynamic_modifier = { modifier = my_dynamic_modifier }","Removes a dynamic modifier."],
+]],
+["Flags and variables", [
+  ["set_country_flag","set_country_flag = my_flag","Sets a country flag. No tooltip is shown."],
+  ["clr_country_flag","clr_country_flag = my_flag","Clears a country flag."],
+  ["timed country flag","set_country_flag = { flag = my_flag days = 30 }","Country flag that clears itself."],
+  ["set_global_flag","set_global_flag = my_global_flag","Sets a global flag, visible to every country."],
+  ["clr_global_flag","clr_global_flag = my_global_flag","Clears a global flag."],
+  ["set_variable","set_variable = { my_var = 10 }","Sets a country variable."],
+  ["add_to_variable","add_to_variable = { my_var = 1 }","Adds to a variable."],
+  ["subtract_from_variable","subtract_from_variable = { my_var = 1 }","Subtracts from a variable."],
+  ["clamp_variable","clamp_variable = {\n\tvar = my_var\n\tmin = 0\n\tmax = 100\n}","Keeps a variable inside a range."],
+  ["set_variable_to_random","set_variable_to_random = {\n\tvar = my_var\n\tmin = 1\n\tmax = 7\n\tinteger = yes\n}","Random value, max is exclusive."],
+  ["save_event_target_as","save_event_target_as = my_target","Saves the current scope for later in this event."],
+]],
+["Events, tooltips, logging", [
+  ["country_event (delayed)","country_event = { id = my_ns.2 days = 3 random_days = 2 }","Fires a country event later. Cheaper than mean_time_to_happen for one-off chains."],
+  ["news_event (delayed)","news_event = { id = my_ns.100 hours = 6 random_hours = 3 }","Fires a news event later."],
+  ["hidden_effect","hidden_effect = {\n\t\n}","Runs the contents without showing them in the tooltip."],
+  ["custom_effect_tooltip","custom_effect_tooltip = my_tooltip_tt","Prints a localisation line in the option tooltip. Use the Tooltip field above instead if you want the key made for you."],
+  ["custom_override_tooltip","custom_override_tooltip = {\n\ttooltip = my_tooltip_tt\n\t\n}","Runs the effects but replaces their whole tooltip with your line."],
+  ["effect_tooltip","effect_tooltip = {\n\t\n}","Shows effects in the tooltip without running them."],
+  ["log","log = \"[GetDateText]: my_ns.1 fired\"","Writes to logs/game.log. The fastest way to confirm something actually ran."],
+]],
+["Diplomacy and war", [
+  ["declare_war_on","declare_war_on = {\n\ttarget = TAG\n\ttype = annex_everything\n}","Declares war with a wargoal."],
+  ["create_wargoal","create_wargoal = {\n\ttype = annex_everything\n\ttarget = TAG\n}","Grants a wargoal."],
+  ["white_peace","white_peace = TAG","Ends a war with no changes."],
+  ["annex_country","annex_country = {\n\ttarget = TAG\n\ttransfer_troops = yes\n}","Annexes a country."],
+  ["puppet","puppet = TAG","Makes a country a subject."],
+  ["end_puppet","end_puppet = TAG","Frees a subject. Run from the overlord."],
+  ["add_to_faction","add_to_faction = TAG","Adds a country to your faction."],
+  ["leave_faction","leave_faction = yes","Leaves the current faction."],
+  ["give_guarantee","give_guarantee = TAG","Guarantees a country."],
+  ["give_military_access","give_military_access = TAG","Grants military access."],
+  ["add_opinion_modifier","add_opinion_modifier = {\n\ttarget = TAG\n\tmodifier = my_opinion_modifier\n}","Changes how this country sees the target."],
+  ["add_threat","add_threat = 5","Raises world tension."],
+  ["add_named_threat","add_named_threat = {\n\tthreat = 5\n\tname = my_tension_reason\n}","Raises world tension with a named line in the tooltip."],
+  ["set_truce","set_truce = {\n\ttarget = TAG\n\tdays = 90\n}","Sets a truce."],
+  ["start_civil_war","start_civil_war = {\n\tideology = communism\n\tsize = 0.4\n\tcapital = 361\n}","Splits the country. The capital state must not be one the rebels can take."],
+]],
+["States and buildings", [
+  ["transfer_state","transfer_state = 361","Takes ownership and control of a state."],
+  ["add_state_core","add_state_core = 361","Adds a core."],
+  ["remove_state_core","remove_state_core = 361","Removes a core."],
+  ["add_state_claim","add_state_claim = 361","Adds a claim."],
+  ["set_capital","set_capital = { state = 361 }","Moves the capital."],
+  ["add_building (state)","361 = {\n\tadd_building_construction = {\n\t\ttype = industrial_complex\n\t\tlevel = 2\n\t\tinstant_build = yes\n\t}\n}","Builds instantly in a state."],
+  ["add_extra_state_shared_building_slots","361 = { add_extra_state_shared_building_slots = 2 }","Adds shared building slots."],
+  ["set_state_name","361 = { set_state_name = \"New Name\" }","Renames a state."],
+  ["add_manpower (state)","361 = { add_manpower = 50000 }","Adds manpower to one state."],
+]],
+["Military and equipment", [
+  ["add_equipment_to_stockpile","add_equipment_to_stockpile = {\n\ttype = infantry_equipment_1\n\tamount = 1000\n\tproducer = ROOT\n}","Adds equipment."],
+  ["add_equipment_subsidy","add_equipment_subsidy = { type = infantry_equipment amount = 500 }","Adds equipment by archetype."],
+  ["load_oob","load_oob = my_oob_file","Loads an order of battle from history/units."],
+  ["set_technology","set_technology = { infantry_weapons = 1 }","Grants a technology."],
+  ["add_tech_bonus","add_tech_bonus = {\n\tname = my_bonus\n\tbonus = 0.5\n\tuses = 1\n\tcategory = electronics\n}","Adds a research bonus."],
+  ["add_research_slot","add_research_slot = 1","Adds a research slot."],
+  ["army_experience","army_experience = 25","Adds army experience."],
+  ["navy_experience","navy_experience = 25","Adds navy experience."],
+  ["air_experience","air_experience = 25","Adds air experience."],
+]],
+["Decisions and focuses", [
+  ["unlock_decision_category_tooltip","unlock_decision_category_tooltip = my_category","Shows that a decision category opened."],
+  ["activate_mission","activate_mission = my_mission","Starts a timed mission decision."],
+  ["complete_national_focus","complete_national_focus = my_focus","Completes a focus instantly."],
+  ["unlock_national_focus","unlock_national_focus = my_focus","Unlocks a focus."],
+  ["load_focus_tree","load_focus_tree = {\n\ttree = my_focus_tree\n\tkeep_completed = yes\n}","Swaps the focus tree."],
+]],
+["Flow control", [
+  ["if / limit","if = {\n\tlimit = {\n\t\t\n\t}\n\t\n}","Runs the contents only when the limit is met."],
+  ["if / else","if = {\n\tlimit = {\n\t\t\n\t}\n\t\n}\nelse = {\n\t\n}","Two-way branch."],
+  ["random_list","random_list = {\n\t50 = {\n\t\t\n\t}\n\t50 = {\n\t\t\n\t}\n}","Weighted random outcome. Weights do not need to total 100."],
+  ["every_country","every_country = {\n\tlimit = {\n\t\t\n\t}\n\t\n}","Runs on every country that passes the limit."],
+  ["random_owned_state","random_owned_state = {\n\tlimit = {\n\t\t\n\t}\n\t\n}","Runs on one owned state."],
+  ["every_other_country","every_other_country = {\n\tlimit = {\n\t\t\n\t}\n\t\n}","Runs on everyone but this country."],
+  ["scope to a tag","USA = {\n\t\n}","Runs the contents as another country."],
+]]
+];
+
+/* =====================================================================
+   2. Modifier library — country scope, the ones actually reached for.
+      Modifiers cannot sit loose in an effect block, so the picker
+      bundles them into a dynamic modifier and inserts the add call.
+   ===================================================================== */
+const MODIFIERS = [
+["Politics", [
+  ["political_power_gain","Flat daily political power.","0.2"],
+  ["political_power_factor","Political power gain, percentage.","0.1"],
+  ["political_power_cost","Flat daily political power cost.","0.1"],
+  ["stability_factor","Stability.","0.05"],
+  ["stability_weekly","Weekly stability gain.","0.01"],
+  ["stability_weekly_factor","Weekly stability gain, percentage.","0.1"],
+  ["war_support_factor","War support.","0.05"],
+  ["war_support_weekly","Weekly war support gain.","0.01"],
+  ["war_stability_factor","Stability lost from being at war.","-0.2"],
+  ["war_support_weekly_factor","Weekly war support gain, percentage.","0.1"],
+  ["party_popularity_stability_factor","Stability from ruling party popularity.","0.1"],
+  ["drift_defence_factor","Ideology drift defence.","0.2"],
+  ["communism_drift","Daily communism gain.","0.02"],
+  ["democratic_drift","Daily democratic gain.","0.02"],
+  ["fascism_drift","Daily fascism gain.","0.02"],
+  ["neutrality_drift","Daily neutrality gain.","0.02"],
+  ["disabled_ideas","Locks ideas and laws. Boolean, use 1.","1"],
+  ["power_balance_daily","Pushes a balance of power daily.","0.01"],
+  ["power_balance_weekly","Pushes a balance of power weekly.","0.01"],
+]],
+["Economy and industry", [
+  ["consumer_goods_factor","Consumer goods share.","-0.05"],
+  ["production_speed_buildings_factor","Construction speed, all buildings.","0.1"],
+  ["production_speed_industrial_complex_factor","Civilian factory construction speed.","0.15"],
+  ["production_speed_arms_factory_factor","Military factory construction speed.","0.15"],
+  ["production_speed_infrastructure_factor","Infrastructure construction speed.","0.15"],
+  ["industrial_capacity_factory","Military factory output.","0.1"],
+  ["industrial_capacity_dockyard","Dockyard output.","0.1"],
+  ["production_factory_efficiency_gain_factor","Production efficiency growth.","0.1"],
+  ["production_factory_max_efficiency_factor","Production efficiency cap.","0.1"],
+  ["production_factory_start_efficiency_factor","Starting production efficiency.","0.1"],
+  ["line_change_production_efficiency_factor","Efficiency kept when switching production.","0.1"],
+  ["local_resources_factor","Resource extraction efficiency.","0.1"],
+  ["research_speed_factor","Research speed.","0.05"],
+  ["min_export","Share of resources sent to market.","-0.1"],
+  ["trade_opinion_factor","How willing others are to buy from you.","0.2"],
+  ["monthly_population","Monthly population growth.","0.1"],
+  ["nuclear_production_factor","Nuke production speed.","0.25"],
+  ["conscription","Share of population available as manpower.","0.01"],
+  ["conscription_factor","Manpower pool, percentage.","0.1"],
+]],
+["Diplomacy", [
+  ["justify_war_goal_time","Time to justify a wargoal.","-0.2"],
+  ["generate_wargoal_tension","Tension needed to justify.","-0.2"],
+  ["guarantee_tension","Tension needed to guarantee.","-0.2"],
+  ["join_faction_tension","Tension needed to join a faction.","-0.2"],
+  ["lend_lease_tension","Tension needed to lend-lease.","-0.2"],
+  ["send_volunteers_tension","Tension needed to send volunteers.","-0.2"],
+  ["send_volunteer_size","Extra volunteer divisions.","2"],
+  ["opinion_gain_monthly_factor","Improve relations gain.","0.25"],
+  ["surrender_limit","Victory points needed before capitulation.","0.1"],
+  ["improve_relations_maintain_cost_factor","Cost to keep improving relations.","-0.25"],
+  ["enemy_justify_war_goal_time","Time for enemies to justify on you.","0.3"],
+]],
+["Land combat", [
+  ["army_attack_factor","Army attack.","0.05"],
+  ["army_defence_factor","Army defence.","0.05"],
+  ["army_org_factor","Army organisation.","0.05"],
+  ["army_morale_factor","Army recovery rate.","0.05"],
+  ["army_speed_factor","Army speed.","0.05"],
+  ["max_planning","Maximum planning bonus.","0.1"],
+  ["planning_speed","Planning speed.","0.1"],
+  ["training_time_army_factor","Division training time.","-0.1"],
+  ["experience_gain_army","Army experience gain.","0.05"],
+  ["land_reinforce_rate","Land reinforcement rate.","0.02"],
+  ["dig_in_speed_factor","Entrenchment speed.","0.1"],
+  ["army_core_attack_factor","Attack on core territory.","0.1"],
+  ["army_core_defence_factor","Defence on core territory.","0.1"],
+  ["supply_consumption_factor","Supply used by the army.","-0.1"],
+  ["attrition","Army attrition.","-0.1"],
+  ["out_of_supply_factor","Penalty when out of supply.","-0.2"],
+  ["no_supply_grace","Hours before out-of-supply penalties.","24"],
+  ["special_forces_cap","Special forces cap.","0.05"],
+]],
+["Air and naval", [
+  ["air_attack_factor","Air attack.","0.05"],
+  ["air_defence_factor","Air defence.","0.05"],
+  ["air_agility_factor","Air agility.","0.05"],
+  ["air_mission_efficiency","Air mission efficiency.","0.05"],
+  ["air_accidents_factor","Air accident chance.","-0.2"],
+  ["air_range_factor","Air range.","0.1"],
+  ["air_superiority_efficiency","Air superiority effect.","0.1"],
+  ["experience_gain_air","Air experience gain.","0.05"],
+  ["navy_attack_factor","Naval attack.","0.05"],
+  ["navy_defence_factor","Naval defence.","0.05"],
+  ["navy_org_factor","Naval organisation.","0.05"],
+  ["naval_speed_factor","Naval speed.","0.05"],
+  ["naval_detection","Naval detection.","0.1"],
+  ["convoy_escort_efficiency","Convoy escort efficiency.","0.1"],
+  ["convoys_capacity","Convoy capacity.","0.1"],
+  ["experience_gain_navy","Navy experience gain.","0.05"],
+]],
+["Fuel, supply, occupation", [
+  ["fuel_gain_factor","Fuel gained from oil.","0.1"],
+  ["base_fuel_gain","Flat daily fuel gain.","20"],
+  ["max_fuel_factor","Fuel storage cap.","0.2"],
+  ["army_fuel_consumption_factor","Army fuel use.","-0.1"],
+  ["navy_fuel_consumption_factor","Navy fuel use.","-0.1"],
+  ["air_fuel_consumption_factor","Air fuel use.","-0.1"],
+  ["supply_factor","Total supply available.","0.1"],
+  ["resistance_damage_to_garrison","Resistance damage to your garrisons.","-0.2"],
+  ["resistance_growth","Resistance growth in occupied land.","-0.2"],
+  ["compliance_growth","Compliance growth in occupied land.","0.2"],
+  ["required_garrison_factor","Garrison troops required.","-0.2"],
+]],
+["Intelligence", [
+  ["decryption_factor","Decryption speed.","0.1"],
+  ["encryption_factor","Encryption strength.","0.1"],
+  ["intel_network_gain_factor","Intel network growth.","0.2"],
+  ["operative_slot","Extra operative slots.","1"],
+  ["civilian_intel_factor","Civilian intel on you.","-0.2"],
+  ["military_intel_factor","Military intel on you.","-0.2"],
+  ["operation_cost","Operation cost.","-0.2"],
+]]
+];
+
+/* =====================================================================
+   3. Project state
+   ===================================================================== */
+const DEF_SETTINGS = {
+  driverMode:"file",          // "file" | "snippet"
+  countryW:210, countryH:176,
+  newsW:397,  newsH:153,
+  countryBase:1, newsBase:100,
+  defaultTag:"USA"
+};
+
+function newOption(){
+  return { id:uid(), name:"", trigger:"", effects:"", ttKey:"", ttText:"", mods:null,
+           vars:{ aprOn:false, apr:5, chaosOn:false, chaos:5 } };
+}
+
+function newEvent(type){
+  const tag = (P && P.settings && P.settings.defaultTag) ? P.settings.defaultTag.toUpperCase() : "USA";
+  const e = {
+    id:uid(), type:type, num:null,
+    text:"", ttText:"",
+    pic:null,                      // {name,url,w,h,ow,oh}
+    major:true, fireOnce:true, hidden:false,
+    immediate:"",
+    timing:{ mode:"approximate", tag:tag, date:"2025.1.20",
+             hours:23, trigger:(tag ? "original_tag = " + tag : ""), mtthMonths:0, mtthDays:1 },
+    options:[ newOption() ]
+  };
+  syncApxTrigger(e);
+  return e;
+}
+
+let P = null;          // project
+let selId = null;      // selected event id
+let openOpts = {};     // which option bars are expanded
+
+function blankProject(){
+  return { ns:"my_events", settings:Object.assign({},DEF_SETTINGS), events:[] };
+}
+
+/* ---- persistence ---- */
+const KEY = "hoi4_event_maker_v1";
+const KEY_SET = "hoi4_event_maker_settings_v1";
+
+let quotaWarned = false;
+function persist(){
+  let ok = true;
+  try { ok = store.set(KEY, JSON.stringify(P)); } catch(e){ ok = false; }
+  try { store.set(KEY_SET, JSON.stringify(P.settings)); } catch(e){}
+  if(!ok && !quotaWarned && store.live){
+    quotaWarned = true;
+    toast("Autosave stopped \u2014 browser storage is full. Use Save project to keep your work.");
+  }
+}
+function restore(){
+  const raw = store.get(KEY);
+  if(raw){
+    try {
+      const p = JSON.parse(raw);
+      if(p && Array.isArray(p.events)){
+        p.settings = Object.assign({}, DEF_SETTINGS, p.settings||{});
+        p.events.forEach(ev=>{
+          ev.timing = Object.assign({ mode:"triggered", tag:"USA", date:"2025.1.20", hours:23, trigger:"", mtthMonths:0, mtthDays:1 }, ev.timing||{});
+          ev.options = (ev.options||[]).map(o=>Object.assign(newOption(), o));
+        });
+        return p;
+      }
+    } catch(e){}
+  }
+  const p = blankProject();
+  const s = store.get(KEY_SET);
+  if(s){ try { p.settings = Object.assign({}, DEF_SETTINGS, JSON.parse(s)); } catch(e){} }
+  return p;
+}
+
+/* =====================================================================
+   4. Derived values
+   ===================================================================== */
+function nsClean(){ return (P.ns||"my_events").trim().replace(/[^A-Za-z0-9_]/g,"_").toLowerCase() || "my_events"; }
+
+function assignNumbers(){
+  let c = P.settings.countryBase, n = P.settings.newsBase;
+  const used = new Set();
+  P.events.forEach(e=>{ if(e.num!=null) used.add(e.num); });
+  P.events.forEach(e=>{
+    if(e.num!=null){ e._num = e.num; return; }
+    if(e.type==="country"){ while(used.has(c)) c++; e._num = c; used.add(c); c++; }
+    else { while(used.has(n)) n++; e._num = n; used.add(n); n++; }
+  });
+}
+function evKey(e){ return nsClean()+"."+e._num; }
+
+function splitText(t){
+  const s = String(t==null?"":t);
+  const i = s.indexOf("\n");
+  if(i === -1) return { title:s.trim(), desc:"" };
+  return { title:s.slice(0,i).trim(), desc:s.slice(i+1).replace(/^\n+/,"") };
+}
+
+const OPT_LETTERS = "abcdefghijklmnopqrstuvwxyz";
+function optSuffix(i){ return i < 26 ? OPT_LETTERS[i] : "opt"+(i+1); }
+
+function picSize(type){
+  const s = P.settings;
+  return type==="news" ? {w:s.newsW,h:s.newsH} : {w:s.countryW,h:s.countryH};
+}
+function gfxName(e){
+  const base = (e.pic && e.pic.name) ? e.pic.name : evKey(e).replace(/\./g,"_");
+  return (e.type==="news" ? "GFX_news_event_" : "GFX_report_event_") + base;
+}
+
+/* =====================================================================
+   5. Rendering — sidebar
+   ===================================================================== */
+function renderList(){
+  assignNumbers();
+  const list = $("#list");
+  if(!P.events.length){
+    list.innerHTML = '<div style="padding:22px 12px;text-align:center;color:var(--ink3);font-size:12.5px;line-height:1.5">No events yet.<br>Add one to start.</div>';
+  } else {
+    list.innerHTML = P.events.map(e=>{
+      const t = splitText(e.text).title;
+      return '<button class="ev-item'+(e.id===selId?' sel':'')+'" data-t="'+e.type+'" data-id="'+e.id+'">'
+        + '<span class="ev-dot"></span>'
+        + '<span class="ev-main">'
+        + '<span class="ev-title'+(t?'':' empty')+'">'+esc(t||"Untitled event")+'</span>'
+        + '<span class="ev-meta">'+esc(evKey(e))+' &middot; '+(e.type==="news"?"news":"country")+'</span>'
+        + '</span></button>';
+    }).join("");
+    list.querySelectorAll(".ev-item").forEach(b=>{
+      b.onclick = ()=>{ selId = b.dataset.id; renderList(); renderMain(); };
+    });
+  }
+  const c = P.events.filter(e=>e.type==="country").length;
+  const n = P.events.length - c;
+  $("#sideFoot").textContent = P.events.length
+    ? (c+" country, "+n+" news")
+    : (store.live ? "Autosave on" : "Autosave off in preview");
+}
+
+/* =====================================================================
+   6. Rendering — main editor
+   ===================================================================== */
+function renderMain(){
+  const main = $("#main");
+  const e = P.events.find(x=>x.id===selId);
+
+  if(!e){
+    main.innerHTML =
+      '<div class="scroll"><div class="empty-state">'
+      + '<h2>Nothing selected</h2>'
+      + '<p>Add a country event or a news event from the left. You can build as many as you like in one batch and export them together as a single set of mod files.</p>'
+      + '<button class="btn primary" id="esAdd">Add a country event</button>'
+      + '</div></div>';
+    const b = $("#esAdd"); if(b) b.onclick = ()=>addEvent("country");
+    return;
+  }
+
+  const sp = splitText(e.text);
+  const sz = picSize(e.type);
+  const key = evKey(e);
+
+  main.innerHTML =
+  '<div class="tabs">'
+  + '<button class="tab'+(e.type==="country"?" on":"")+'" data-t="country" id="tabC">Country</button>'
+  + '<button class="tab'+(e.type==="news"?" on":"")+'" data-t="news" id="tabN">News</button>'
+  + '<div class="spacer"></div>'
+  + '<div style="display:flex;align-items:center;gap:6px;padding:9px 0">'
+  +   '<button class="btn sm" id="btnDup">Duplicate</button>'
+  +   '<button class="btn sm danger" id="btnDel">Delete</button>'
+  + '</div>'
+  + '</div>'
+
+  + '<div class="scroll"><div class="cols"><div>'
+
+  /* ---- text ---- */
+  + card("Event text",
+      field("Title and description",
+        '<textarea id="fText" rows="9" placeholder="The Forty-Seventh President&#10;&#10;At noon on the steps of the Capitol&hellip;">'+esc(e.text)+'</textarea>'
+        + '<div class="split-note"><b>Title</b><span class="'+(sp.title?"":"none")+'">'+esc(sp.title||"first line, up to the first Enter")+'</span></div>'
+        + '<div class="hint">Everything after the first line becomes the description. Leave a blank line between paragraphs &mdash; they export as <span class="mono">\\n\\n</span>.</div>')
+      + field("Variable tooltip <span style=\'font-weight:400;color:var(--ink3)\'>(optional)</span>",
+        '<div class="varbar">'
+        + '<button type="button" class="chip" data-ins="[?USA.aproval_rate|0]">Approval now</button>'
+        + '<button type="button" class="chip" data-ins="[?USA.civil_war|0]">Chaos now</button>'
+        + '<button type="button" class="chip" data-ins="[?USA.usa_apr_target|0]">Trend target</button>'
+        + '</div>'
+        + '<textarea id="fTT" rows="2" placeholder="§RApproval is sliding back toward [?USA.usa_apr_target|0]%.§!">'+esc(e.ttText||"")+'</textarea>'
+        + '<div class="hint">Gets its own key, <span class="mono">'+esc(key)+'.tt</span>, and is appended to the description as <span class="mono">['+esc(key)+'.tt]</span> &mdash; the same pattern as your approval events. Square brackets read variables; <span class="mono">§R</span>&hellip;<span class="mono">§!</span> colours text.</div>')
+    )
+
+  /* ---- picture ---- */
+  + card("Picture",
+      (e.pic ? picBlock(e, sz) :
+        '<div class="drop" id="drop">Drop a PNG here, or click to choose one'
+        + '<div style="margin-top:5px;font-size:11.5px;color:var(--ink3)">Target for '+(e.type==="news"?"news":"country")+' events: '+sz.w+'&times;'+sz.h+'. Anything else gets resized; an exact match is left untouched.</div></div>')
+    )
+
+  /* ---- timing ---- */
+  + card("When it fires", timingBlock(e))
+
+  /* ---- options ---- */
+  + card("Options",
+      '<div id="opts">'+e.options.map((o,i)=>optBlock(e,o,i)).join("")+'</div>'
+      + '<button class="btn sm" id="btnAddOpt" style="margin-top:4px">+ Add option</button>'
+      + '<div class="hint">An event with no options cannot be dismissed. Keep at least one unless the event is hidden.</div>'
+    )
+
+  /* ---- flags ---- */
+  + card("Event flags",
+      '<div class="row">'
+      + '<label class="chk"><input type="checkbox" id="fOnce"'+(e.fireOnce?" checked":"")+'> Fire only once</label>'
+      + (e.type==="news" ? '<label class="chk"><input type="checkbox" id="fMajor"'+(e.major?" checked":"")+'> Major (reaches every country)</label>' : '')
+      + '<label class="chk"><input type="checkbox" id="fHidden"'+(e.hidden?" checked":"")+'> Hidden</label>'
+      + '</div>'
+      + (e.type==="news"
+          ? '<div class="hint">Leave <b>Fire only once</b> off for a major news event. A news event reaching a second country counts as firing again, so the flag would pin it to one recipient.</div>'
+          : '')
+      + field2("Immediate block <span style='font-weight:400;color:var(--ink3)'>(optional)</span>",
+          '<textarea id="fImm" rows="3" placeholder="set_country_flag = my_flag">'+esc(e.immediate||"")+'</textarea>'
+          + '<div class="hint">Runs the moment the event fires, before the player picks an option.</div>')
+    )
+
+  + '</div>'
+
+  /* ---- preview ---- */
+  + '<div><div class="card prev-card"><div class="card-h"><h3>Preview</h3></div><div class="card-b">'
+  + previewBlock(e, sp, sz, key)
+  + '</div></div></div>'
+
+  + '</div></div>';
+
+  wireMain(e);
+}
+
+function card(title, inner){
+  return '<div class="card"><div class="card-h"><h3>'+title+'</h3></div><div class="card-b">'+inner+'</div></div>';
+}
+function field(label, inner){ return '<div class="field"><label>'+label+'</label>'+inner+'</div>'; }
+function field2(label, inner){ return '<div class="field" style="margin-top:13px"><label>'+label+'</label>'+inner+'</div>'; }
+
+function picBlock(e, sz){
+  const p = e.pic;
+  const exact = (p.ow===sz.w && p.oh===sz.h);
+  const scale = Math.min(1, 150/p.w);
+  return '<div class="pic-row">'
+    + '<img class="pic-prev" src="'+p.url+'" width="'+Math.round(p.w*scale)+'" height="'+Math.round(p.h*scale)+'" alt="">'
+    + '<div class="pic-info">'
+    +   '<div class="name">'+esc(p.name)+'.dds</div>'
+    +   '<div style="margin-top:3px">Source '+p.ow+'&times;'+p.oh+' &rarr; exported at '+p.w+'&times;'+p.h+'</div>'
+    +   (exact ? '<span class="tag ok">Exact size, untouched</span>' : '<span class="tag fix">Resized to fit</span>')
+    +   '<div style="margin-top:9px;display:flex;gap:5px">'
+    +     '<button class="btn sm" id="btnRepic">Replace</button>'
+    +     '<button class="btn sm danger" id="btnUnpic">Remove</button>'
+    +   '</div>'
+    +   '<div class="hint" style="margin-top:9px">Sprite: <span class="mono">'+esc(gfxName(e))+'</span></div>'
+    + '</div></div>';
+}
+
+function timingBlock(e){
+  const t = e.timing;
+  const r = (v,title,desc)=>
+    '<label class="opt-radio'+(t.mode===v?" on":"")+'"><input type="radio" name="tmode" value="'+v+'"'+(t.mode===v?" checked":"")+'>'
+    + '<strong style="display:inline">'+title+'</strong><small style="margin-top:4px">'+desc+'</small></label>';
+
+  let extra = "";
+  if(t.mode === "precise"){
+    extra = '<div class="row">'
+      + '<div class="field" style="margin:0"><label>Country tag</label><input type="text" class="mono" id="tTag" value="'+esc(t.tag)+'" placeholder="USA" maxlength="3" style="text-transform:uppercase"></div>'
+      + '<div class="field" style="margin:0"><label>Date</label><input type="text" class="mono" id="tDate" value="'+esc(t.date)+'" placeholder="2025.1.20"></div>'
+      + '<div class="field" style="margin:0"><label>Hour</label><input type="number" id="tHours" value="'+(t.hours)+'" min="0" max="23"></div>'
+      + '</div>'
+      + '<div class="hint">Exports an <span class="mono">on_daily_'+esc((t.tag||"TAG").toUpperCase())+'</span> block that checks <span class="mono">date &gt; '+esc(prevDay(t.date))+'</span>, sets a guard flag, then fires the event with <span class="mono">hours = '+(t.hours)+'</span>. The event itself carries <span class="mono">is_triggered_only = yes</span> and no trigger.</div>';
+  } else if(t.mode === "approximate"){
+    extra = '<div class="row"><div class="field" style="margin:0"><label>Land around</label>'
+      + '<input type="text" class="mono" id="tADate" value="'+esc(t.date)+'" placeholder="2025.6.1"></div>'
+      + '<div class="field" style="margin:0"><label>Mean time &mdash; days</label><input type="number" id="tDays" value="'+(t.mtthDays||0)+'" min="0"></div>'
+      + '<div class="field" style="margin:0"><label>&hellip; or months</label><input type="number" id="tMonths" value="'+(t.mtthMonths||0)+'" min="0"></div>'
+      + '</div>'
+      + '<div class="field" style="margin-top:13px"><label>Trigger</label>'
+      + '<textarea id="tTrig" rows="4" placeholder="tag = USA&#10;date &gt; 2025.6.1">'+esc(t.trigger)+'</textarea>'
+      + '<div class="hint">The date line is kept in sync with the field above. Everything else in here is yours &mdash; add flags, wars, whatever gates it.</div></div>'
+      + '<div class="hint">With a mean time of one day the event fires at the first check after the date passes. Triggers are only tested every 20 days, so it lands somewhere in the three weeks after '+esc(t.date||"the date")+' rather than on it. That twenty-day window is also why this costs the game almost nothing.</div>';
+  } else {
+    extra = '<div class="hint">The event gets <span class="mono">is_triggered_only = yes</span> and nothing else. Fire it yourself from another event, a decision, a focus, or an on_action.</div>';
+  }
+
+  return '<div id="tmodes">'
+    + r("triggered","Triggered only","Nothing fires it automatically. You call it from somewhere else.")
+    + r("precise","Precise date","Lands on the exact day, via a daily on_actions driver.")
+    + r("approximate","Approximate","Normal trigger plus mean_time_to_happen. Cheaper, but only checked every 20 days.")
+    + '</div><div style="margin-top:13px">'+extra+'</div>';
+}
+
+/* =====================================================================
+   Approval and Chaos shortcuts.
+
+   aproval_rate and civil_war are rounded display variables that the
+   monthly tick overwrites from usa_apr_real / usa_chaos_real, so an
+   event must never write to them directly. These buttons emit the
+   two documented helpers instead, and write the matching tooltip
+   line, since neither helper produces a tooltip of its own.
+   ===================================================================== */
+const VAR_FX_LINE = /^\s*(set_temp_variable\s*=\s*\{\s*(apr|chaos)_delta\s*=\s*-?[\d.]+\s*\}|USA_(apr|chaos)_add\s*=\s*yes)\s*$/;
+const VAR_TT_LINE = /^\s*\u00A7[GR](Approval|Chaos)\s[+-]?[\d.]+\u00A7!/;
+
+function varLines(o){
+  const fx = [], tt = [];
+  const v = o.vars || {};
+  if(v.aprOn){
+    const n = Number(v.apr)||0;
+    fx.push("set_temp_variable = { apr_delta = " + n + " }", "USA_apr_add = yes");
+    tt.push((n>=0 ? "\u00A7GApproval +" : "\u00A7RApproval ") + n + "\u00A7! (now [?USA.aproval_rate|0]%)");
+  }
+  if(v.chaosOn){
+    const n = Number(v.chaos)||0;
+    fx.push("set_temp_variable = { chaos_delta = " + n + " }", "USA_chaos_add = yes");
+    tt.push((n>=0 ? "\u00A7RChaos +" : "\u00A7GChaos ") + n + "\u00A7! (now [?USA.civil_war|0])");
+  }
+  return { fx, tt };
+}
+
+function joinBlock(head, rest){
+  const tail = rest.filter((l,i,a)=> !(i===0 && !l.trim())).join("\n").replace(/^\n+/,"");
+  if(!head.length) return tail.replace(/\s+$/,"");
+  return (head.join("\n") + (tail.trim() ? "\n\n" + tail : "")).replace(/\s+$/,"");
+}
+
+function syncVars(o, box){
+  const { fx, tt } = varLines(o);
+  o.effects = joinBlock(fx, String(o.effects||"").split("\n").filter(l=>!VAR_FX_LINE.test(l)));
+  o.ttText  = joinBlock(tt, String(o.ttText ||"").split("\n").filter(l=>!VAR_TT_LINE.test(l)));
+  if(box){
+    const fe = box.querySelector('[data-f="effects"]'); if(fe) fe.value = o.effects;
+    const te = box.querySelector('[data-f="ttText"]');  if(te) te.value = o.ttText;
+    refreshPips(box, o);
+  }
+  touch();
+}
+
+/* The trigger box owns its own text; this only rewrites the date line,
+   so anything else typed in there survives. */
+function syncApxTrigger(e){
+  const line = "date > " + prevDay(e.timing.date);
+  let lines = String(e.timing.trigger||"").split("\n");
+  let found = false;
+  lines = lines.map(l=>{ if(/^\s*date\s*>/.test(l)){ found = true; return line; } return l; });
+  if(!found){
+    while(lines.length && !lines[lines.length-1].trim()) lines.pop();
+    lines.push(line);
+  }
+  e.timing.trigger = lines.join("\n");
+}
+
+function optBlock(e, o, i){
+  const key = evKey(e)+"."+optSuffix(i);
+  const open = !!openOpts[o.id];
+  const modCount = o.mods && o.mods.list && o.mods.list.length ? o.mods.list.length : 0;
+  return '<div class="opt'+(open?" open":"")+'" data-oid="'+o.id+'">'
+    + '<button class="opt-bar" data-act="toggle">'
+    +   '<svg class="tri" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 1.5 L7 5 L3 8.5"/></svg>'
+    +   '<span class="opt-key">.'+optSuffix(i)+'</span>'
+    +   '<span class="opt-name'+(o.name?"":" empty")+'">'+esc(o.name||"Untitled option")+'</span>'
+    +   '<span class="opt-flags">'
+    +     (o.trigger.trim() ? '<span class="pip on">TRIG</span>' : '')
+    +     (o.effects.trim() ? '<span class="pip on">FX</span>' : '')
+    +     (o.ttText && o.ttText.trim() ? '<span class="pip on">TT</span>' : '')
+    +     (modCount ? '<span class="pip on">MOD '+modCount+'</span>' : '')
+    +   '</span>'
+    + '</button>'
+    + '<div class="opt-body">'
+    +   field("Option text",'<input type="text" data-f="name" value="'+esc(o.name)+'" placeholder="A new administration takes the reins."><div class="hint">Key: <span class="mono">'+esc(key)+'</span></div>')
+    +   field("Trigger <span style=\'font-weight:400;color:var(--ink3)\'>(optional)</span>",'<textarea data-f="trigger" rows="2" placeholder="tag = USA">'+esc(o.trigger)+'</textarea><div class="hint">Hides the option unless these conditions pass.</div>')
+    +   '<div class="field">'
+    +     '<div class="eff-head"><label>Effects</label><div class="eff-tools pick-wrap">'
+    +       '<button class="btn sm" data-act="pick" data-oid="'+o.id+'">Insert&hellip;</button>'
+    +     '</div></div>'
+    +     '<textarea data-f="effects" rows="7" placeholder="add_political_power = 50&#10;set_country_flag = my_flag">'+esc(o.effects)+'</textarea>'
+    +   '</div>'
+    +   field("Custom tooltip <span style=\'font-weight:400;color:var(--ink3)\'>(optional)</span>",
+            varBar(o)
+            + '<textarea data-f="ttText" rows="2" placeholder="Approval will drift toward [?USA.usa_apr_target|0]% over the next month.">'+esc(o.ttText||"")+'</textarea>'
+            + '<div class="hint">Adds <span class="mono">custom_effect_tooltip = '+esc(key)+'_tt</span> to the top of the effect block and writes the localisation line for you. Use it to spell out anything the game cannot describe on its own &mdash; variables, flags, delayed events.<br>The two buttons write the matching <span class="mono">USA_apr_add</span> / <span class="mono">USA_chaos_add</span> call into the effects above and a coloured line into the tooltip. Turning one off removes both again.</div>')
+    +   '<div style="display:flex;justify-content:flex-end;gap:5px;margin-top:11px">'
+    +     '<button class="btn sm" data-act="up">Move up</button>'
+    +     '<button class="btn sm danger" data-act="rm">Remove option</button>'
+    +   '</div>'
+    + '</div></div>';
+}
+
+function varBar(o){
+  const v = o.vars || { aprOn:false, apr:5, chaosOn:false, chaos:5 };
+  const tick = '<svg class="tick" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.8 9.2 L10 3.5"/></svg>';
+  return '<div class="varbar">'
+    + '<button type="button" class="varbtn'+(v.aprOn?" on":"")+'" data-v="apr">'+tick+'Approval</button>'
+    + '<input class="varnum" type="number" data-vn="apr" value="'+(v.apr)+'" step="1"'+(v.aprOn?"":" disabled")+'>'
+    + '<button type="button" class="varbtn'+(v.chaosOn?" on":"")+'" data-v="chaos">'+tick+'Chaos</button>'
+    + '<input class="varnum" type="number" data-vn="chaos" value="'+(v.chaos)+'" step="1"'+(v.chaosOn?"":" disabled")+'>'
+    + '</div>';
+}
+
+function previewBlock(e, sp, sz, key){
+  let pic;
+  if(e.pic){
+    pic = '<img class="prev-pic" src="'+e.pic.url+'" style="aspect-ratio:'+sz.w+'/'+sz.h+'" alt="">';
+  } else {
+    pic = '<div class="prev-pic prev-pic-ph" style="aspect-ratio:'+sz.w+'/'+sz.h+'">'+sz.w+' &times; '+sz.h+'</div>';
+  }
+  const opts = e.options.length
+    ? e.options.map(o=>'<div class="prev-opt'+(o.name?"":" empty")+'">'+esc(o.name||"Untitled option")+'</div>').join("")
+    : '<div class="prev-opt empty">No options &mdash; the player cannot close this</div>';
+
+  let when = "triggered only";
+  if(e.timing.mode==="precise") when = (e.timing.tag||"TAG").toUpperCase()+" on "+e.timing.date;
+  else if(e.timing.mode==="approximate"){
+    const m = e.timing.mtthMonths||0, d = e.timing.mtthDays||0;
+    const t = (m||d) ? ("MTTH " + (m?m+"mo ":"") + (d?d+"d":"")).trim() : "MTTH not set";
+    when = "around " + (e.timing.date||"?") + " (" + t + ")";
+  }
+
+  return '<div class="prev-win">'
+    + pic
+    + '<div class="prev-title">'+esc(sp.title||"Untitled event")+'</div>'
+    + '<div class="prev-desc">'+esc(sp.desc||"No description yet.")+'</div>'
+    + (e.ttText ? '<div class="prev-tt">'+esc(e.ttText)+'</div>' : '')
+    + '<div class="prev-opts">'+opts+'</div>'
+    + '</div>'
+    + '<div class="prev-meta">'
+    +   '<div><b>id</b> '+esc(key)+'</div>'
+    +   '<div><b>type</b> '+(e.type==="news"?"news_event":"country_event")+(e.type==="news"&&e.major?" (major)":"")+'</div>'
+    +   '<div><b>when</b> '+esc(when)+'</div>'
+    +   '<div><b>picture</b> '+esc(e.pic?gfxName(e):"none")+'</div>'
+    + '</div>';
+}
+
+/* =====================================================================
+   7. Wiring
+   ===================================================================== */
+let badgeTimer = null;
+function touch(rerenderList){
+  persist();
+  if(rerenderList) renderList();
+  scheduleCommit();
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(refreshCheckBadge, 220);
+}
+
+function wireMain(e){
+  $("#tabC").onclick = ()=>{ if(e.type!=="country"){ e.type="country"; refitPic(e); touch(true); renderMain(); } };
+  $("#tabN").onclick = ()=>{ if(e.type!=="news"){ e.type="news"; refitPic(e); touch(true); renderMain(); } };
+
+  $("#btnDup").onclick = ()=>{
+    const copy = JSON.parse(JSON.stringify(e));
+    copy.id = uid(); copy.num = null;
+    copy.options.forEach(o=>o.id=uid());
+    P.events.splice(P.events.indexOf(e)+1, 0, copy);
+    selId = copy.id; touch(true); renderMain();
+  };
+  $("#btnDel").onclick = ()=>{
+    if(!confirm("Delete this event?")) return;
+    P.events.splice(P.events.indexOf(e),1);
+    selId = P.events.length ? P.events[0].id : null;
+    touch(true); renderMain();
+  };
+
+  const ft = $("#fText");
+  ft.oninput = ()=>{
+    e.text = ft.value;
+    const sp = splitText(e.text);
+    const note = ft.parentElement.querySelector(".split-note span");
+    note.textContent = sp.title || "first line, up to the first Enter";
+    note.className = sp.title ? "" : "none";
+    updatePreview(e); touch(true);
+  };
+  $("#fTT").oninput = ev=>{ e.ttText = ev.target.value; updatePreview(e); touch(); };
+  document.querySelectorAll("[data-ins]").forEach(b=>{
+    b.onclick = ()=>{ insertAtCursor($("#fTT"), b.dataset.ins, true); };
+  });
+  $("#fImm").oninput = ev=>{ e.immediate = ev.target.value; touch(); };
+  $("#fOnce").onchange = ev=>{ e.fireOnce = ev.target.checked; touch(); };
+  const fm = $("#fMajor"); if(fm) fm.onchange = ev=>{ e.major = ev.target.checked; touch(); };
+  $("#fHidden").onchange = ev=>{ e.hidden = ev.target.checked; touch(); };
+
+  /* picture */
+  const drop = $("#drop");
+  if(drop){
+    drop.onclick = ()=>pickImage(e);
+    drop.ondragover = ev=>{ ev.preventDefault(); drop.classList.add("over"); };
+    drop.ondragleave = ()=>drop.classList.remove("over");
+    drop.ondrop = ev=>{ ev.preventDefault(); drop.classList.remove("over");
+      if(ev.dataTransfer.files[0]) loadImage(e, ev.dataTransfer.files[0]); };
+  }
+  const rp = $("#btnRepic"); if(rp) rp.onclick = ()=>pickImage(e);
+  const up = $("#btnUnpic"); if(up) up.onclick = ()=>{ e.pic = null; touch(); renderMain(); };
+
+  /* timing */
+  document.querySelectorAll('#tmodes input[name=tmode]').forEach(r=>{
+    r.onchange = ()=>{
+      e.timing.mode = r.value;
+      if(r.value === "approximate"){
+        if(!String(e.timing.trigger||"").trim() && P.settings.defaultTag)
+          e.timing.trigger = "original_tag = " + P.settings.defaultTag.toUpperCase();
+        if(!e.timing.mtthDays && !e.timing.mtthMonths) e.timing.mtthDays = 1;
+        syncApxTrigger(e);
+      }
+      if(r.value === "precise" && !e.timing.tag) e.timing.tag = P.settings.defaultTag || "";
+      touch(); renderMain();
+    };
+  });
+  const bind = (sel, fn)=>{ const el = $(sel); if(el) el.oninput = ()=>{ fn(el.value); touch(); }; };
+  bind("#tTag", v=>{ e.timing.tag = v.toUpperCase().slice(0,3); });
+  bind("#tDate", v=>{ e.timing.date = v; });
+  bind("#tHours", v=>{ e.timing.hours = Math.max(0,Math.min(23, parseInt(v||"0",10)||0)); });
+  bind("#tTrig", v=>{ e.timing.trigger = v; });
+  const ad = $("#tADate");
+  if(ad) ad.oninput = ()=>{
+    e.timing.date = ad.value;
+    syncApxTrigger(e);
+    const tt = $("#tTrig"); if(tt) tt.value = e.timing.trigger;
+    updatePreview(e); touch();
+  };
+  bind("#tMonths", v=>{ e.timing.mtthMonths = Math.max(0, parseInt(v||"0",10)||0); updatePreview(e); });
+  bind("#tDays", v=>{ e.timing.mtthDays = Math.max(0, parseInt(v||"0",10)||0); updatePreview(e); });
+
+  /* options */
+  $("#btnAddOpt").onclick = ()=>{
+    const o = newOption(); openOpts[o.id] = true;
+    e.options.push(o); touch(); renderMain();
+  };
+  wireOptions(e);
+}
+
+function wireOptions(e){
+  document.querySelectorAll("#opts .opt").forEach(box=>{
+    const oid = box.dataset.oid;
+    const o = e.options.find(x=>x.id===oid);
+    if(!o) return;
+
+    box.querySelector('[data-act="toggle"]').onclick = ()=>{
+      openOpts[oid] = !openOpts[oid];
+      box.classList.toggle("open", !!openOpts[oid]);
+    };
+
+    box.querySelectorAll("[data-f]").forEach(inp=>{
+      inp.oninput = ()=>{
+        o[inp.dataset.f] = inp.value;
+        if(inp.dataset.f === "ttText") o.ttKey = inp.value.trim() ? "1" : "";
+        const nameEl = box.querySelector(".opt-name");
+        if(inp.dataset.f === "name"){
+          nameEl.textContent = o.name || "Untitled option";
+          nameEl.className = "opt-name" + (o.name ? "" : " empty");
+          updatePreview(e);
+        }
+        refreshPips(box, o);
+        touch();
+      };
+    });
+
+    box.querySelectorAll(".varbtn").forEach(b=>{
+      b.onclick = ev=>{
+        ev.stopPropagation();
+        const k = b.dataset.v;
+        if(!o.vars) o.vars = { aprOn:false, apr:5, chaosOn:false, chaos:5 };
+        o.vars[k+"On"] = !o.vars[k+"On"];
+        b.classList.toggle("on", o.vars[k+"On"]);
+        const num = box.querySelector('[data-vn="'+k+'"]');
+        num.disabled = !o.vars[k+"On"];
+        syncVars(o, box);
+      };
+    });
+    box.querySelectorAll(".varnum").forEach(inp=>{
+      inp.oninput = ()=>{
+        if(!o.vars) o.vars = { aprOn:false, apr:5, chaosOn:false, chaos:5 };
+        o.vars[inp.dataset.vn] = inp.value === "" ? 0 : Number(inp.value);
+        syncVars(o, box);
+      };
+    });
+
+    const pk = box.querySelector('[data-act="pick"]');
+    if(pk) pk.onclick = ev=>{ ev.stopPropagation(); openPicker(pk, box.querySelector('[data-f="effects"]'), o, e); };
+
+    box.querySelector('[data-act="rm"]').onclick = ()=>{
+      e.options.splice(e.options.indexOf(o),1); touch(); renderMain();
+    };
+    box.querySelector('[data-act="up"]').onclick = ()=>{
+      const i = e.options.indexOf(o);
+      if(i>0){ e.options.splice(i,1); e.options.splice(i-1,0,o); touch(); renderMain(); }
+    };
+  });
+}
+
+function refreshPips(box, o){
+  const modCount = o.mods && o.mods.list ? o.mods.list.length : 0;
+  box.querySelector(".opt-flags").innerHTML =
+      (o.trigger.trim() ? '<span class="pip on">TRIG</span>' : '')
+    + (o.effects.trim() ? '<span class="pip on">FX</span>' : '')
+    + (o.ttText && o.ttText.trim() ? '<span class="pip on">TT</span>' : '')
+    + (modCount ? '<span class="pip on">MOD '+modCount+'</span>' : '');
+}
+
+function updatePreview(e){
+  const holder = document.querySelector(".prev-card .card-b");
+  if(!holder) return;
+  holder.innerHTML = previewBlock(e, splitText(e.text), picSize(e.type), evKey(e));
+}
+
+/* =====================================================================
+   8. Images — resize to target, encode as uncompressed DDS
+   ===================================================================== */
+let picTarget = null;                       // event id, not the object:
+function pickImage(e){ picTarget = e.id; $("#fileImg").click(); }
+$("#fileImg").onchange = ev=>{               // an undo in between replaces it
+  const f = ev.target.files[0];
+  const e = P.events.find(x=>x.id===picTarget);
+  if(f && e) loadImage(e, f);
+  ev.target.value = "";
+};
+
+function loadImage(e, file){
+  const fr = new FileReader();
+  fr.onload = ()=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const sz = picSize(e.type);
+      const exact = (img.naturalWidth===sz.w && img.naturalHeight===sz.h);
+      const cv = document.createElement("canvas");
+      cv.width = sz.w; cv.height = sz.h;
+      const cx = cv.getContext("2d");
+      cx.imageSmoothingEnabled = true;
+      cx.imageSmoothingQuality = "high";
+      cx.drawImage(img, 0, 0, sz.w, sz.h);
+      e.pic = {
+        name: (file.name.replace(/\.[^.]+$/,"") || "event_picture").replace(/[^A-Za-z0-9_-]/g,"_").toLowerCase(),
+        url: cv.toDataURL("image/png"),
+        w: sz.w, h: sz.h,
+        ow: img.naturalWidth, oh: img.naturalHeight,
+        exact: exact
+      };
+      touch(); renderMain();
+    };
+    img.onerror = ()=>toast("That file could not be read as an image.");
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+
+/* If the tab flips between country and news the target size changes,
+   so re-render the stored picture at the new size from the same pixels. */
+function refitPic(e){
+  if(!e.pic) return;
+  const sz = picSize(e.type);
+  const img = new Image();
+  const old = e.pic;
+  img.onload = ()=>{
+    const cv = document.createElement("canvas");
+    cv.width = sz.w; cv.height = sz.h;
+    const cx = cv.getContext("2d");
+    cx.imageSmoothingQuality = "high";
+    cx.drawImage(img, 0, 0, sz.w, sz.h);
+    e.pic = Object.assign({}, old, { url:cv.toDataURL("image/png"), w:sz.w, h:sz.h });
+    touch(); renderMain();
+  };
+  img.src = old.url;
+}
+
+/* uncompressed 32-bit BGRA DDS — byte-for-byte the layout the game's
+   own event pictures use: 128-byte header, then raw pixels, no mipmaps */
+function ddsFromDataURL(url, w, h){
+  return new Promise((res, rej)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      const cx = cv.getContext("2d");
+      cx.drawImage(img, 0, 0, w, h);
+      const px = cx.getImageData(0,0,w,h).data;      // RGBA
+      const out = new Uint8Array(128 + w*h*4);
+      const dv = new DataView(out.buffer);
+      out[0]=0x44; out[1]=0x44; out[2]=0x53; out[3]=0x20;   // "DDS "
+      dv.setUint32(4,124,true);                              // header size
+      dv.setUint32(8,0x0002100F,true);                       // CAPS|HEIGHT|WIDTH|PITCH|PIXELFORMAT|MIPMAPCOUNT
+      dv.setUint32(12,h,true);
+      dv.setUint32(16,w,true);
+      dv.setUint32(20,w*4,true);                             // pitch
+      dv.setUint32(24,1,true);                               // depth
+      dv.setUint32(28,1,true);                               // base level only
+      dv.setUint32(76,32,true);                              // pixelformat size
+      dv.setUint32(80,0x41,true);                            // ALPHAPIXELS|RGB
+      dv.setUint32(84,0,true);                               // no fourCC
+      dv.setUint32(88,32,true);                              // bit count
+      dv.setUint32(92,0x00FF0000,true);                      // R mask
+      dv.setUint32(96,0x0000FF00,true);                      // G mask
+      dv.setUint32(100,0x000000FF,true);                     // B mask
+      dv.setUint32(104,0xFF000000,true);                     // A mask
+      dv.setUint32(108,0x1000,true);                         // caps: texture
+      let p = 128;
+      for(let i=0;i<px.length;i+=4){
+        out[p++] = px[i+2];   // B
+        out[p++] = px[i+1];   // G
+        out[p++] = px[i];     // R
+        out[p++] = px[i+3];   // A
+      }
+      res(out);
+    };
+    img.onerror = ()=>rej(new Error("bad image"));
+    img.src = url;
+  });
+}
+
+/* =====================================================================
+   9. Effect / modifier picker
+   ===================================================================== */
+let pickerEl = null;
+function closePicker(){ if(pickerEl){ pickerEl.remove(); pickerEl = null; } }
+document.addEventListener("click", ev=>{
+  if(pickerEl && !pickerEl.contains(ev.target)) closePicker();
+});
+
+function openPicker(anchor, textarea, o, e){
+  closePicker();
+  const wrap = anchor.parentElement;             // .pick-wrap
+  const el = document.createElement("div");
+  el.className = "pick";
+  el.innerHTML =
+    '<div class="pick-top">'
+    + '<button class="pick-tab on" data-k="fx">Effects</button>'
+    + '<button class="pick-tab" data-k="mod">Modifiers</button>'
+    + '</div>'
+    + '<div class="pick-search"><input type="text" id="pkq" placeholder="Search&hellip;" autocomplete="off" spellcheck="false"></div>'
+    + '<div class="pick-list" id="pkl"></div>'
+    + '<div class="mod-basket" id="pkb" style="display:none"></div>'
+    + '<div class="pick-foot" id="pkf">Click to insert at the cursor.</div>';
+  wrap.appendChild(el);
+  pickerEl = el;
+  el.onclick = ev=>ev.stopPropagation();
+
+  let mode = "fx";
+  const q  = el.querySelector("#pkq");
+  const lst= el.querySelector("#pkl");
+  const bsk= el.querySelector("#pkb");
+  const foot=el.querySelector("#pkf");
+
+  if(!o.mods) o.mods = { name:"", days:0, list:[] };
+
+  function draw(){
+    const term = q.value.trim().toLowerCase();
+    const src = mode==="fx" ? EFFECTS : MODIFIERS;
+    let html = "", hits = 0;
+    src.forEach(([grp, items])=>{
+      const keep = items.filter(it=>{
+        if(!term) return true;
+        return (it[0]+" "+it[2]).toLowerCase().indexOf(term) !== -1
+            || (mode==="fx" && it[1].toLowerCase().indexOf(term) !== -1);
+      });
+      if(!keep.length) return;
+      hits += keep.length;
+      html += '<div class="pick-grp">'+esc(grp)+'</div>';
+      keep.forEach(it=>{
+        const idx = items.indexOf(it);
+        html += '<button class="pick-it" data-g="'+esc(grp)+'" data-i="'+idx+'">'
+             +  '<span class="k">'+esc(it[0])+'</span>'
+             +  '<span class="d">'+esc(it[2])+'</span></button>';
+      });
+    });
+    lst.innerHTML = hits ? html : '<div class="pick-empty">Nothing matches &ldquo;'+esc(q.value)+'&rdquo;</div>';
+    lst.querySelectorAll(".pick-it").forEach(b=>{
+      b.onclick = ()=>{
+        const grp = b.dataset.g, i = +b.dataset.i;
+        const items = (mode==="fx"?EFFECTS:MODIFIERS).find(x=>x[0]===grp)[1];
+        if(mode==="fx") insertAtCursor(textarea, items[i][1]);
+        else addMod(items[i]);
+      };
+    });
+    drawBasket();
+  }
+
+  function addMod(m){
+    if(o.mods.list.some(x=>x.key===m[0])) return;
+    o.mods.list.push({ key:m[0], val:m[2] });
+    if(!o.mods.name) o.mods.name = suggestModName(e, o);
+    drawBasket(); syncMods(); 
+  }
+
+  function drawBasket(){
+    if(mode !== "mod"){ bsk.style.display = "none"; foot.textContent = "Click to insert at the cursor."; return; }
+    bsk.style.display = "block";
+    foot.textContent = "Modifiers cannot sit loose in an effect block, so these are bundled into a dynamic modifier and applied with add_dynamic_modifier.";
+    if(!o.mods.list.length){
+      bsk.innerHTML = '<div style="font-size:11.5px;color:var(--ink3)">Pick modifiers above and they collect here.</div>';
+      return;
+    }
+    bsk.innerHTML =
+      o.mods.list.map((m,i)=>
+        '<span class="mod-chip">'+esc(m.key)
+        + ' <input type="text" data-mi="'+i+'" value="'+esc(m.val)+'">'
+        + '<button data-rm="'+i+'" title="Remove">&times;</button></span>').join("")
+      + '<div style="display:flex;gap:6px;margin-top:6px">'
+      + '<input type="text" id="mname" placeholder="dynamic modifier name" class="mono" style="font-size:11.5px;padding:4px 6px" value="'+esc(o.mods.name)+'">'
+      + '<input type="number" id="mdays" placeholder="days" style="font-size:11.5px;padding:4px 6px;max-width:78px" value="'+(o.mods.days||"")+'">'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--ink3);margin-top:5px">Leave days blank for a permanent modifier.</div>';
+
+    bsk.querySelectorAll("[data-mi]").forEach(inp=>{
+      inp.oninput = ()=>{ o.mods.list[+inp.dataset.mi].val = inp.value; syncMods(); };
+    });
+    bsk.querySelectorAll("[data-rm]").forEach(b=>{
+      b.onclick = ()=>{ o.mods.list.splice(+b.dataset.rm,1); drawBasket(); syncMods(); };
+    });
+    bsk.querySelector("#mname").oninput = ev2=>{ o.mods.name = ev2.target.value; syncMods(); };
+    bsk.querySelector("#mdays").oninput = ev2=>{ o.mods.days = parseInt(ev2.target.value||"0",10)||0; syncMods(); };
+  }
+
+  /* keep exactly one add_dynamic_modifier line in the effects text */
+  function syncMods(){
+    const marker = /^\s*add_dynamic_modifier\s*=\s*\{[^}]*\}\s*$/gm;
+    let txt = textarea.value.replace(marker, "").replace(/\n{3,}/g,"\n\n").replace(/^\n+/,"");
+    if(o.mods.list.length && o.mods.name){
+      const line = "add_dynamic_modifier = { modifier = " + o.mods.name
+        + (o.mods.days ? " days = " + o.mods.days : "") + " }";
+      txt = (txt.trim() ? txt.replace(/\s*$/,"") + "\n" : "") + line;
+    }
+    textarea.value = txt;
+    o.effects = txt;
+    const box = textarea.closest(".opt");
+    if(box) refreshPips(box, o);
+    touch();
+  }
+
+  el.querySelectorAll(".pick-tab").forEach(t=>{
+    t.onclick = ()=>{
+      el.querySelectorAll(".pick-tab").forEach(x=>x.classList.remove("on"));
+      t.classList.add("on"); mode = t.dataset.k; q.value = ""; draw(); q.focus();
+    };
+  });
+  q.oninput = draw;
+  q.onkeydown = ev=>{ if(ev.key==="Escape"){ ev.stopPropagation(); closePicker(); } };
+  draw();
+  q.focus();
+}
+
+function suggestModName(e, o){
+  const i = e.options.indexOf(o);
+  return (nsClean()+"_"+e._num+"_"+optSuffix(i<0?0:i)+"_mod");
+}
+
+function insertAtCursor(ta, text, inline){
+  const s = ta.selectionStart, en = ta.selectionEnd;
+  const before = ta.value.slice(0,s), after = ta.value.slice(en);
+  const needsNL = !inline && before.length && !/\n$/.test(before);
+  const ins = (needsNL ? "\n" : "") + text;
+  ta.value = before + ins + after;
+  const pos = s + ins.length;
+  ta.selectionStart = ta.selectionEnd = pos;
+  ta.focus();
+  ta.dispatchEvent(new Event("input", {bubbles:true}));
+}
+
+/* =====================================================================
+   9b. Undo
+
+   renderMain rebuilds the DOM, which throws away the browser's own
+   undo stack, so the app keeps its own. Typing is coalesced, but only
+   just: a quarter-second pause closes the step, so one Ctrl+Z is
+   about a word. The history runs deeper to make up for the finer
+   steps - snapshots are small, so depth is nearly free.
+
+   Picture data is held aside by token so a snapshot stays small -
+   otherwise sixty snapshots of a batch with pictures would be
+   hundreds of megabytes.
+   ===================================================================== */
+const PICS = new Map();
+let picSeq = 0;
+
+function packState(){
+  return JSON.stringify({ ns:P.ns, settings:P.settings, events:P.events }, (k,v)=>{
+    if(k === "url" && typeof v === "string" && v.slice(0,5) === "data:"){
+      for(const [t,u] of PICS) if(u === v) return t;
+      const tok = "pic#" + (++picSeq);
+      PICS.set(tok, v);
+      return tok;
+    }
+    return v;
+  });
+}
+function unpackState(str){
+  const o = JSON.parse(str);
+  (o.events||[]).forEach(e=>{
+    if(e.pic && typeof e.pic.url === "string" && e.pic.url.slice(0,4) === "pic#")
+      e.pic.url = PICS.get(e.pic.url) || "";
+  });
+  return o;
+}
+
+function focusInfo(){
+  const el = document.activeElement;
+  if(!el || (el.tagName !== "TEXTAREA" && el.tagName !== "INPUT")) return null;
+  const box = el.closest ? el.closest(".opt") : null;
+  let start = 0, end = 0;
+  try { start = el.selectionStart||0; end = el.selectionEnd||0; } catch(err){}
+  return { id: el.id||"", oid: box ? box.dataset.oid : "", f: (el.dataset && el.dataset.f)||"", start, end };
+}
+function restoreFocus(f){
+  if(!f) return;
+  let el = null;
+  if(f.id) el = document.getElementById(f.id);
+  else if(f.oid && f.f){
+    const box = document.querySelector('.opt[data-oid="'+f.oid+'"]');
+    if(box) el = box.querySelector('[data-f="'+f.f+'"]');
+  }
+  if(!el) return;
+  el.focus();
+  try { el.selectionStart = f.start; el.selectionEnd = f.end; } catch(err){}
+}
+
+const HIST = { past:[], future:[], cur:null, timer:null, MAX:150 };
+
+function snap(){
+  return { data: packState(), selId: selId, open: Object.assign({}, openOpts), focus: focusInfo() };
+}
+function commit(){
+  clearTimeout(HIST.timer); HIST.timer = null;
+  const s = snap();
+  if(!HIST.cur){ HIST.cur = s; return; }
+  if(HIST.cur.data === s.data){
+    HIST.cur.selId = s.selId; HIST.cur.open = s.open; HIST.cur.focus = s.focus;
+    return;
+  }
+  HIST.past.push(HIST.cur);
+  if(HIST.past.length > HIST.MAX) HIST.past.shift();
+  HIST.cur = s;
+  HIST.future.length = 0;
+}
+function scheduleCommit(){
+  clearTimeout(HIST.timer);
+  HIST.timer = setTimeout(commit, 250);
+}
+
+function applySnap(s){
+  const o = unpackState(s.data);
+  P.ns = o.ns; P.settings = o.settings; P.events = o.events;
+  selId = (s.selId && P.events.some(e=>e.id===s.selId)) ? s.selId
+        : (P.events.length ? P.events[0].id : null);
+  openOpts = Object.assign({}, s.open);
+  const nsEl = $("#ns"); if(nsEl) nsEl.value = P.ns;
+  closePicker();
+  persist(); renderList(); renderMain(); refreshCheckBadge();
+  restoreFocus(s.focus);
+}
+
+function undo(){
+  commit();
+  if(!HIST.past.length){ toast("Nothing left to undo"); return; }
+  HIST.future.push(HIST.cur);
+  HIST.cur = HIST.past.pop();
+  applySnap(HIST.cur);
+}
+function redo(){
+  commit();
+  if(!HIST.future.length){ toast("Nothing to redo"); return; }
+  HIST.past.push(HIST.cur);
+  HIST.cur = HIST.future.pop();
+  applySnap(HIST.cur);
+}
+
+/* =====================================================================
+   10. Export — HOI4 files
+   ===================================================================== */
+function prevDay(d){
+  const m = /^(\d{1,4})\.(\d{1,2})\.(\d{1,2})/.exec(String(d||"").trim());
+  if(!m) return "1935.12.31";
+  const dt = new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
+  dt.setUTCDate(dt.getUTCDate()-1);
+  return dt.getUTCFullYear()+"."+(dt.getUTCMonth()+1)+"."+dt.getUTCDate();
+}
+
+function locEscape(s){
+  return String(s==null?"":s)
+    .replace(/\\/g,"\\\\")
+    .replace(/"/g,'\\"')
+    .replace(/\r\n/g,"\n")
+    .replace(/\n/g,"\\n");
+}
+/* Re-indent a pasted block to sit at `tabs` deep while keeping its own
+   nesting. Four spaces count as one tab so mixed input still lines up. */
+function indent(text, tabs){
+  const pad = "\t".repeat(tabs);
+  const lines = String(text||"").replace(/\r\n/g,"\n").split("\n");
+  const depth = l => /^[\t ]*/.exec(l)[0].replace(/ {4}/g,"\t").replace(/ +/g,"").length;
+  let min = Infinity;
+  lines.forEach(l=>{ if(l.trim()) min = Math.min(min, depth(l)); });
+  if(!isFinite(min)) min = 0;
+  return lines.map(l=>{
+    if(!l.trim()) return "";
+    return pad + "\t".repeat(Math.max(0, depth(l) - min)) + l.replace(/^[\t ]*/,"");
+  }).join("\n");
+}
+
+function buildEventsFile(){
+  const ns = nsClean();
+  let out = "add_namespace = " + ns + "\n";
+  P.events.forEach(e=>{
+    const sp = splitText(e.text);
+    const key = evKey(e);
+    const kind = e.type==="news" ? "news_event" : "country_event";
+
+    out += "\n" + "#".repeat(72) + "\n";
+    out += "# " + key + (sp.title ? " - " + sp.title : "") + "\n";
+    out += "#\n";
+    if(e.timing.mode === "precise"){
+      out += "# Fires on " + e.timing.date + " from common/on_actions, which checks\n";
+      out += "# every day. A plain date trigger on the event itself is only\n";
+      out += "# checked every 20 days, so it would wander or miss entirely.\n";
+    } else if(e.timing.mode === "approximate"){
+      out += "# Approximate timing: trigger plus mean_time_to_happen. Checked\n";
+      out += "# every 20 days, which is why it is cheap and why the exact day\n";
+      out += "# it lands on will vary.\n";
+    } else {
+      out += "# Triggered only. Fire it from another event, a decision, a focus\n";
+      out += "# or an on_action.\n";
+    }
+    out += "#".repeat(72) + "\n";
+
+    out += kind + " = {\n";
+    out += "\tid = " + key + "\n";
+    if(!e.hidden){
+      out += "\ttitle = " + key + ".t\n";
+      out += "\tdesc = " + key + ".d\n";
+      if(e.pic) out += "\tpicture = " + gfxName(e) + "\n";
+    } else {
+      out += "\thidden = yes\n";
+    }
+    out += "\n";
+
+    if(e.timing.mode === "approximate"){
+      const trig = String(e.timing.trigger||"").trim();
+      if(trig) out += "\ttrigger = {\n" + indent(trig,2) + "\n\t}\n\n";
+      const m = e.timing.mtthMonths||0, d = e.timing.mtthDays||0;
+      if(m || d){
+        out += "\tmean_time_to_happen = {\n";
+        if(m) out += "\t\tmonths = " + m + "\n";
+        if(d) out += "\t\tdays = " + d + "\n";
+        out += "\t}\n\n";
+      } else {
+        out += "\t# WARNING: no mean_time_to_happen. With a trigger but no timer\n";
+        out += "\t# the event fires on the first check after the trigger passes.\n\n";
+      }
+    } else {
+      out += "\tis_triggered_only = yes\n";
+    }
+
+    if(e.type==="news" && e.major) out += "\tmajor = yes\n";
+    if(e.fireOnce && !(e.type==="news" && e.major)) out += "\tfire_only_once = yes\n";
+    out += "\n";
+
+    if(String(e.immediate||"").trim()){
+      out += "\timmediate = {\n" + indent(e.immediate,2) + "\n\t}\n\n";
+    }
+
+    if(!e.options.length && !e.hidden){
+      out += "\t# WARNING: no options. The player cannot dismiss this event.\n";
+    }
+
+    e.options.forEach((o,i)=>{
+      const ok = key + "." + optSuffix(i);
+      out += "\toption = {\n";
+      out += "\t\tname = " + ok + "\n";
+      if(String(o.trigger||"").trim()) out += "\n\t\ttrigger = {\n" + indent(o.trigger,3) + "\n\t\t}\n";
+      const bits = [];
+      if(String(o.ttText||"").trim()) bits.push("custom_effect_tooltip = " + ok + "_tt");
+      if(String(o.effects||"").trim()) bits.push(String(o.effects).trim());
+      if(bits.length) out += "\n" + indent(bits.join("\n"),2) + "\n";
+      out += "\t}\n";
+      if(i < e.options.length-1) out += "\n";
+    });
+
+    out += "}\n";
+  });
+  return out;
+}
+
+function buildLocFile(){
+  let out = "\uFEFFl_english:\n";
+  P.events.forEach(e=>{
+    const sp = splitText(e.text);
+    const key = evKey(e);
+    let desc = sp.desc;
+    if(String(e.ttText||"").trim()) desc = (desc ? desc + "\n\n" : "") + "[" + key + ".tt]";
+    out += "\n";
+    if(!e.hidden){
+      out += " " + key + '.t:0 "' + locEscape(sp.title) + '"\n';
+      out += " " + key + '.d:0 "' + locEscape(desc) + '"\n';
+      if(String(e.ttText||"").trim())
+        out += " " + key + '.tt:0 "' + locEscape(e.ttText) + '"\n';
+    }
+    e.options.forEach((o,i)=>{
+      const ok = key + "." + optSuffix(i);
+      out += " " + ok + ':0 "' + locEscape(o.name) + '"\n';
+      if(String(o.ttText||"").trim())
+        out += " " + ok + '_tt:0 "' + locEscape(o.ttText) + '"\n';
+    });
+  });
+  // dynamic modifier names
+  const mods = collectMods();
+  if(mods.length){
+    out += "\n";
+    mods.forEach(m=>{ out += " " + m.name + ':0 "' + locEscape(m.label) + '"\n'; });
+  }
+  return out;
+}
+
+function collectMods(){
+  const seen = {}, res = [];
+  P.events.forEach(e=>{
+    e.options.forEach((o,i)=>{
+      if(o.mods && o.mods.list && o.mods.list.length && o.mods.name){
+        if(seen[o.mods.name]) return;
+        seen[o.mods.name] = 1;
+        const sp = splitText(e.text);
+        res.push({ name:o.mods.name, list:o.mods.list, label: sp.title || o.mods.name });
+      }
+    });
+  });
+  return res;
+}
+
+function buildDynModFile(){
+  const mods = collectMods();
+  if(!mods.length) return null;
+  let out = "# Dynamic modifiers used by the " + nsClean() + " events.\n";
+  out += "# Definitions here cannot be reloaded in-game; a restart is needed\n";
+  out += "# after any change to this file.\n";
+  mods.forEach(m=>{
+    out += "\n" + m.name + " = {\n";
+    out += "\ticon = GFX_idea_unknown\n";
+    out += "\tenable = { always = yes }\n\n";
+    m.list.forEach(x=>{ out += "\t" + x.key + " = " + (String(x.val).trim()||"0") + "\n"; });
+    out += "}\n";
+  });
+  return out;
+}
+
+function preciseEvents(){ return P.events.filter(e=>e.timing.mode==="precise" && e.timing.tag); }
+
+function buildOnActions(){
+  const list = preciseEvents();
+  if(!list.length) return null;
+  const ns = nsClean();
+  const byTag = {};
+  list.forEach(e=>{ const t = e.timing.tag.toUpperCase(); (byTag[t] = byTag[t]||[]).push(e); });
+
+  let out = "";
+  out += "# " + "=".repeat(68) + "\n";
+  out += "#  Precise-date drivers for the " + ns + " events.\n";
+  out += "#\n";
+  out += "#  on_daily_TAG runs every day, so the event lands on the exact\n";
+  out += "#  date. Putting the date straight on the event instead would only\n";
+  out += "#  get checked every 20 days.\n";
+  out += "#\n";
+  out += "#  Each block is guarded by its own global flag, so it arms once\n";
+  out += "#  and never again. The event itself is is_triggered_only with no\n";
+  out += "#  trigger block, because a trigger there is one more thing that\n";
+  out += "#  can swallow it silently.\n";
+  out += "# " + "=".repeat(68) + "\n\n";
+  out += "on_actions = {\n";
+  Object.keys(byTag).sort().forEach(tag=>{
+    out += "\n\ton_daily_" + tag + " = {\n";
+    out += "\t\teffect = {\n";
+    out += "\t\t\t" + tag + " = {\n";
+    byTag[tag].forEach(e=>{
+      const key = evKey(e);
+      const flag = key.replace(/\./g,"_") + "_fired";
+      const sp = splitText(e.text);
+      out += "\n\t\t\t\t# ---------- " + key + " : " + e.timing.date + (sp.title ? "  " + sp.title : "") + " ----------\n";
+      out += "\t\t\t\tif = {\n";
+      out += "\t\t\t\t\tlimit = {\n";
+      out += "\t\t\t\t\t\tNOT = { has_global_flag = " + flag + " }\n";
+      out += "\t\t\t\t\t\tdate > " + prevDay(e.timing.date) + "\n";
+      out += "\t\t\t\t\t}\n";
+      out += "\t\t\t\t\tset_global_flag = " + flag + "\n";
+      out += "\t\t\t\t\t" + (e.type==="news" ? "news_event" : "country_event")
+           + " = { id = " + key + " hours = " + (e.timing.hours||0) + " }\n";
+      out += '\t\t\t\t\tlog = "[GetDateText]: ' + key + ' armed"\n';
+      out += "\t\t\t\t}\n";
+    });
+    out += "\n\t\t\t}\n";
+    out += "\t\t}\n";
+    out += "\t}\n";
+  });
+  out += "\n}\n";
+  return out;
+}
+
+function buildGfxFile(){
+  const withPics = P.events.filter(e=>e.pic);
+  if(!withPics.length) return null;
+  let out = "spriteTypes = {\n";
+  const seen = {};
+  withPics.forEach(e=>{
+    const n = gfxName(e);
+    if(seen[n]) return; seen[n] = 1;
+    out += "\n\tspriteType = {\n";
+    out += '\t\tname = "' + n + '"\n';
+    out += '\t\ttexturefile = "gfx/event_pictures/' + e.pic.name + '.dds"\n';
+    out += "\t}\n";
+  });
+  out += "}\n";
+  return out;
+}
+
+function buildReadme(hasDriverFile){
+  const ns = nsClean();
+  const list = preciseEvents();
+  let r = "";
+  r += "HOI4 Event Maker export\n";
+  r += "namespace: " + ns + "\n";
+  r += "events: " + P.events.length + " (" + P.events.filter(e=>e.type==="country").length + " country, "
+     + P.events.filter(e=>e.type==="news").length + " news)\n\n";
+  r += "Drop the folders into your mod root, keeping the structure:\n\n";
+  r += "  events/" + ns + ".txt\n";
+  r += "  localisation/english/" + ns + "_l_english.yml\n";
+  if(buildGfxFile()) r += "  interface/" + ns + "_events.gfx\n";
+  if(P.events.some(e=>e.pic)) r += "  gfx/event_pictures/*.dds\n";
+  if(buildDynModFile()) r += "  common/dynamic_modifiers/" + ns + "_dynamic_modifiers.txt\n";
+  if(hasDriverFile) r += "  common/on_actions/" + ns + "_on_actions.txt\n";
+  r += "\n";
+  r += "Notes\n";
+  r += "-----\n";
+  r += "* Localisation is UTF-8 with BOM. Keep it that way or the game\n";
+  r += "  ignores the file.\n";
+  r += "* Pictures are uncompressed 32-bit DDS, the same layout the base\n";
+  r += "  game uses for event pictures. No mipmaps, no conversion needed.\n";
+  r += "* A missing sprite shows an empty frame rather than crashing, so\n";
+  r += "  pictures can be swapped freely afterwards.\n";
+  if(list.length && !hasDriverFile){
+    r += "\n";
+    r += "Precise-date driver\n";
+    r += "-------------------\n";
+    r += "You chose to paste this in yourself. Merge the on_daily_TAG blocks\n";
+    r += "below into your existing on_actions file. Do not create a second\n";
+    r += "on_actions file with the same name as a vanilla one -- HOI4 will\n";
+    r += "silently overwrite the original.\n\n";
+    r += buildOnActions();
+  }
+  return r;
+}
+
+/* =====================================================================
+   10b. Pre-export check
+
+   Brace and quote counting catches the mistakes that stop a file
+   parsing at all. The rest are things that load fine and then quietly
+   do nothing, which is far harder to notice in-game.
+   ===================================================================== */
+const BAD_TOKENS = [
+  ["create_faction",
+   "create_faction is obsolete and can throw an access violation when the event fires. Use create_faction_from_template."],
+  ["political_power_cost_factor",
+   "Not a real modifier, so it is silently ignored. Use political_power_factor, or a negative political_power_gain."],
+  ["on_monthly_pulse_country",
+   "Not a real on_action. HOI4 drops unknown keys without complaining, so the tick never runs. Use on_monthly_TAG."],
+  ["add_namespace",
+   "The namespace is written once at the top of the exported file. A second one here would break the event."]
+];
+
+const DIRECT_WRITE = /(?:set_variable|add_to_variable|subtract_from_variable)\s*=\s*\{[^}]*\b(aproval_rate|civil_war)\b/;
+
+function braceBalance(txt){
+  let d = 0;
+  String(txt||"").split("\n").forEach(line=>{
+    let inStr = false;
+    for(let i=0;i<line.length;i++){
+      const c = line[i];
+      if(c === '"'){ inStr = !inStr; continue; }
+      if(inStr) continue;
+      if(c === "#") break;
+      if(c === "{") d++;
+      else if(c === "}") d--;
+    }
+  });
+  return d;
+}
+function oddQuoteLine(txt){
+  const lines = String(txt||"").split("\n");
+  for(let i=0;i<lines.length;i++){
+    const body = lines[i].split("#")[0];
+    if((body.match(/"/g)||[]).length % 2) return i+1;
+  }
+  return 0;
+}
+
+function scanScript(txt, where, evId, optId, push){
+  if(!String(txt||"").trim()) return;
+  const b = braceBalance(txt);
+  if(b > 0) push("error", evId, optId, where + " has " + b + " unclosed " + (b===1?"brace":"braces") + ". The file will not parse.");
+  if(b < 0) push("error", evId, optId, where + " has " + (-b) + " extra closing " + (b===-1?"brace":"braces") + ". The file will not parse.");
+  const q = oddQuoteLine(txt);
+  if(q) push("error", evId, optId, where + " has an unclosed quote on line " + q + ".");
+  BAD_TOKENS.forEach(([tok,msg])=>{
+    if(new RegExp("\\b"+tok+"\\b").test(txt)) push("warn", evId, optId, where + ": " + msg);
+  });
+  if(DIRECT_WRITE.test(txt))
+    push("error", evId, optId, where + " writes straight to a display variable. The next monthly tick overwrites it from usa_apr_real. Use the Approval and Chaos buttons, or call USA_apr_add / USA_chaos_add.");
+}
+
+function validate(){
+  assignNumbers();
+  const out = [];
+  const push = (level, evId, optId, msg)=>out.push({level, evId, optId, msg});
+
+  if(!/^[a-z0-9_]+$/.test(nsClean()))
+    push("error", null, null, "The namespace must be lower-case letters, digits and underscores.");
+
+  const nums = {}, pics = {};
+  P.events.forEach(e=>{
+    const key = evKey(e);
+    const label = splitText(e.text).title || key;
+    const at = s => label + " \u2014 " + s;
+
+    if(nums[e._num]) push("error", e.id, null, at("shares id " + key + " with another event. Clear one of the manual numbers."));
+    nums[e._num] = 1;
+
+    const sp = splitText(e.text);
+    if(!e.hidden){
+      if(!sp.title) push("error", e.id, null, at("has no title. The first line of the text box becomes the title."));
+      if(!sp.desc)  push("warn",  e.id, null, at("has no description."));
+      if(!e.pic)    push("info",  e.id, null, at("has no picture. The frame will be empty, which is harmless."));
+    }
+
+    if(e.pic){
+      if(pics[e.pic.name] && pics[e.pic.name] !== e.pic.url)
+        push("warn", e.id, null, at("uses the picture filename " + e.pic.name + ".dds, which another event already claims with a different image. One will overwrite the other."));
+      pics[e.pic.name] = e.pic.url;
+    }
+
+    if(!e.options.length && !e.hidden)
+      push("error", e.id, null, at("has no options, so the player cannot close it."));
+    if(e.options.length && e.hidden)
+      push("warn", e.id, null, at("is hidden but still has options. They will never be seen."));
+
+    if(e.type === "news" && e.major && e.fireOnce)
+      push("info", e.id, null, at("is a major news event, so fire_only_once is left out of the export \u2014 it would pin the event to a single recipient."));
+
+    if(e.timing.mode === "precise"){
+      if(!e.timing.tag) push("error", e.id, null, at("is set to a precise date but has no country tag, so no driver can be written."));
+      if(!/^\d{1,4}\.\d{1,2}\.\d{1,2}$/.test(String(e.timing.date||"").trim()))
+        push("error", e.id, null, at("has a date the driver cannot read. Use year.month.day, as in 2025.1.20."));
+    }
+    if(e.timing.mode === "approximate"){
+      const hasTrig = String(e.timing.trigger||"").trim();
+      const hasTime = (e.timing.mtthMonths||0) || (e.timing.mtthDays||0);
+      if(!hasTrig && !hasTime)
+        push("error", e.id, null, at("has no trigger and no mean time, so it fires immediately for every country."));
+      else if(!hasTrig)
+        push("warn", e.id, null, at("has a timer but no trigger, so every country in the game can get it."));
+      else if(!hasTime)
+        push("warn", e.id, null, at("has a trigger but no mean time, so it fires on the first check after the trigger passes."));
+      scanScript(e.timing.trigger, at("trigger"), e.id, null, push);
+    }
+
+    scanScript(e.immediate, at("immediate block"), e.id, null, push);
+
+    e.options.forEach((o,i)=>{
+      const ok = key + "." + optSuffix(i);
+      const oat = s2 => label + " \u00b7 option ." + optSuffix(i) + " \u2014 " + s2;
+      if(!String(o.name||"").trim())
+        push("error", e.id, o.id, oat("has no text, so the button will be blank in game."));
+      scanScript(o.trigger, oat("trigger"), e.id, o.id, push);
+      scanScript(o.effects, oat("effects"), e.id, o.id, push);
+      if(/custom_effect_tooltip/.test(o.effects||"") && String(o.ttText||"").trim())
+        push("warn", e.id, o.id, oat("has a custom_effect_tooltip typed into the effects and a tooltip in the field above. Both will show."));
+      if(o.mods && o.mods.list && o.mods.list.length){
+        if(!String(o.mods.name||"").trim())
+          push("error", e.id, o.id, oat("has modifiers collected but no dynamic modifier name, so nothing will be written."));
+        o.mods.list.forEach(m=>{
+          if(!String(m.val).trim() || isNaN(Number(m.val)))
+            push("error", e.id, o.id, oat(m.key + " has no usable number. A modifier set to 0 does nothing at all."));
+        });
+      }
+    });
+  });
+
+  if(!P.events.length) push("warn", null, null, "There are no events to export yet.");
+  return out;
+}
+
+function issueCounts(list){
+  return {
+    error: list.filter(i=>i.level==="error").length,
+    warn:  list.filter(i=>i.level==="warn").length,
+    info:  list.filter(i=>i.level==="info").length
+  };
+}
+
+function refreshCheckBadge(){
+  const c = issueCounts(validate());
+  const b = $("#btnCheck");
+  if(!b) return;
+  b.classList.toggle("has-err", c.error>0);
+  b.classList.toggle("has-warn", !c.error && c.warn>0);
+  b.textContent = c.error ? (c.error + (c.error===1?" problem":" problems"))
+               : c.warn  ? (c.warn + (c.warn===1?" warning":" warnings"))
+               : "Checks pass";
+}
+
+function showIssues(list, onward){
+  const c = issueCounts(list);
+  const veil = document.createElement("div");
+  veil.className = "veil";
+  const row = i =>
+    '<button class="issue '+i.level+'" data-ev="'+(i.evId||"")+'" data-opt="'+(i.optId||"")+'">'
+    + '<span class="lv">'+(i.level==="error"?"Problem":i.level==="warn"?"Warning":"Note")+'</span>'
+    + '<span class="ms">'+esc(i.msg)+'</span></button>';
+  const body = list.length
+    ? ['error','warn','info'].map(l=>{
+        const g = list.filter(i=>i.level===l);
+        return g.length ? '<div class="igrp">'+g.map(row).join("")+'</div>' : "";
+      }).join("")
+    : '<div style="padding:26px 4px;text-align:center;color:var(--ink2)">Nothing to flag. The batch is ready to export.</div>';
+
+  veil.innerHTML =
+    '<div class="modal"><div class="modal-h"><h3>Pre-export check</h3>'
+    + '<div class="spacer"></div><div style="font-size:12px;color:var(--ink3)">'
+    + (c.error? c.error+" to fix &middot; ":"") + (c.warn? c.warn+" to look at &middot; ":"") + c.info + " notes</div></div>"
+    + '<div class="modal-b" style="padding:12px">'+body+'</div>'
+    + '<div class="modal-f">'
+    + '<button class="btn" id="iClose">Close</button>'
+    + (onward ? '<button class="btn '+(c.error?"":"primary")+'" id="iGo">'+(c.error?"Export anyway":"Export")+'</button>' : '')
+    + '</div></div>';
+  document.body.appendChild(veil);
+  veil.onclick = ev=>{ if(ev.target===veil) veil.remove(); };
+  veil.querySelector("#iClose").onclick = ()=>veil.remove();
+  const go = veil.querySelector("#iGo");
+  if(go) go.onclick = ()=>{ veil.remove(); onward(); };
+  veil.querySelectorAll(".issue").forEach(b=>{
+    b.onclick = ()=>{
+      if(!b.dataset.ev) return;
+      selId = b.dataset.ev;
+      if(b.dataset.opt) openOpts[b.dataset.opt] = true;
+      veil.remove(); renderList(); renderMain();
+    };
+  });
+}
+
+/* =====================================================================
+   11. ZIP writer — stored entries, no dependencies
+   ===================================================================== */
+const CRC_TABLE = (()=>{
+  const t = new Uint32Array(256);
+  for(let n=0;n<256;n++){
+    let c = n;
+    for(let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf){
+  let c = 0xFFFFFFFF;
+  for(let i=0;i<buf.length;i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function utf8(s){ return new TextEncoder().encode(s); }
+
+function makeZip(files){          // files: [{path, data:Uint8Array}]
+  const parts = [], central = [];
+  let offset = 0;
+  const now = new Date();
+  const dosTime = ((now.getHours()<<11) | (now.getMinutes()<<5) | (now.getSeconds()/2)) & 0xFFFF;
+  const dosDate = (((now.getFullYear()-1980)<<9) | ((now.getMonth()+1)<<5) | now.getDate()) & 0xFFFF;
+
+  files.forEach(f=>{
+    const name = utf8(f.path);
+    const crc = crc32(f.data);
+    const lh = new Uint8Array(30 + name.length);
+    const dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(4, 20, true);
+    dv.setUint16(6, 0x0800, true);      // UTF-8 names
+    dv.setUint16(8, 0, true);           // stored
+    dv.setUint16(10, dosTime, true);
+    dv.setUint16(12, dosDate, true);
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, f.data.length, true);
+    dv.setUint32(22, f.data.length, true);
+    dv.setUint16(26, name.length, true);
+    dv.setUint16(28, 0, true);
+    lh.set(name, 30);
+    parts.push(lh, f.data);
+
+    const ch = new Uint8Array(46 + name.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, dosTime, true);
+    cv.setUint16(14, dosDate, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, f.data.length, true);
+    cv.setUint32(24, f.data.length, true);
+    cv.setUint16(28, name.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(name, 46);
+    central.push(ch);
+
+    offset += lh.length + f.data.length;
+  });
+
+  let cSize = 0;
+  central.forEach(c=>cSize += c.length);
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cSize, true);
+  ev.setUint32(16, offset, true);
+
+  const all = parts.concat(central, [end]);
+  let total = 0; all.forEach(a=>total += a.length);
+  const out = new Uint8Array(total);
+  let p = 0; all.forEach(a=>{ out.set(a, p); p += a.length; });
+  return out;
+}
+
+function download(name, data, type){
+  const blob = new Blob([data], {type: type || "application/octet-stream"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+
+async function exportAll(skipCheck){
+  if(!P.events.length){ toast("Add an event first."); return; }
+  if(!skipCheck){
+    const issues = validate();
+    if(issues.some(i=>i.level!=="info")){ showIssues(issues, ()=>exportAll(true)); return; }
+  }
+  assignNumbers();
+  const ns = nsClean();
+  const files = [];
+  const useFile = P.settings.driverMode === "file";
+
+  files.push({ path:"events/"+ns+".txt", data: utf8(buildEventsFile()) });
+  files.push({ path:"localisation/english/"+ns+"_l_english.yml", data: utf8(buildLocFile()) });
+
+  const gfx = buildGfxFile();
+  if(gfx) files.push({ path:"interface/"+ns+"_events.gfx", data: utf8(gfx) });
+
+  const dyn = buildDynModFile();
+  if(dyn) files.push({ path:"common/dynamic_modifiers/"+ns+"_dynamic_modifiers.txt", data: utf8(dyn) });
+
+  const oa = buildOnActions();
+  if(oa && useFile) files.push({ path:"common/on_actions/"+ns+"_on_actions.txt", data: utf8(oa) });
+
+  for(const e of P.events){
+    if(!e.pic) continue;
+    try {
+      const dds = await ddsFromDataURL(e.pic.url, e.pic.w, e.pic.h);
+      files.push({ path:"gfx/event_pictures/"+e.pic.name+".dds", data: dds });
+    } catch(err){ /* skip a broken picture rather than losing the export */ }
+  }
+
+  files.push({ path:"README.txt", data: utf8(buildReadme(!!(oa && useFile))) });
+
+  download(ns+"_events.zip", makeZip(files), "application/zip");
+  toast("Exported " + files.length + " files");
+}
+
+/* =====================================================================
+   12. Project save / open, settings, toast
+   ===================================================================== */
+function toast(msg){
+  const old = document.querySelector(".toast"); if(old) old.remove();
+  const t = document.createElement("div");
+  t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2600);
+}
+
+function addEvent(type){
+  const e = newEvent(type);
+  if(type === "news") e.fireOnce = false;
+  P.events.push(e);
+  selId = e.id;
+  openOpts[e.options[0].id] = true;
+  touch(true); renderMain();
+}
+
+function openSettings(){
+  const s = P.settings;
+  const veil = document.createElement("div");
+  veil.className = "veil";
+  veil.innerHTML =
+    '<div class="modal"><div class="modal-h"><h3>Settings</h3></div><div class="modal-b">'
+    + '<div class="field"><label>Precise-date driver on export</label>'
+    +   '<label class="opt-radio'+(s.driverMode==="file"?" on":"")+'"><input type="radio" name="dm" value="file"'+(s.driverMode==="file"?" checked":"")+'>'
+    +     '<strong style="display:inline">Its own on_actions file</strong>'
+    +     '<small>Writes <span class="mono">common/on_actions/&lt;namespace&gt;_on_actions.txt</span>. Mod-unique filename, so it will not overwrite a vanilla one.</small></label>'
+    +   '<label class="opt-radio'+(s.driverMode==="snippet"?" on":"")+'"><input type="radio" name="dm" value="snippet"'+(s.driverMode==="snippet"?" checked":"")+'>'
+    +     '<strong style="display:inline">Snippet in the README</strong>'
+    +     '<small>No on_actions file is written. The blocks go in README.txt for you to merge into a file you already have.</small></label>'
+    + '</div>'
+    + '<div class="field"><label>Country event picture</label><div class="row">'
+    +   '<input type="number" id="sCW" value="'+s.countryW+'" min="1"><input type="number" id="sCH" value="'+s.countryH+'" min="1"></div>'
+    +   '<div class="hint">Width &times; height. Your mod uses 210 &times; 176.</div></div>'
+    + '<div class="field"><label>News event picture</label><div class="row">'
+    +   '<input type="number" id="sNW" value="'+s.newsW+'" min="1"><input type="number" id="sNH" value="'+s.newsH+'" min="1"></div>'
+    +   '<div class="hint">Width &times; height. 397 &times; 153 is the vanilla news size.</div></div>'
+    + '<div class="field"><label>Default country tag</label>'
+    +   '<input type="text" id="sTag" class="mono" value="'+esc(s.defaultTag||"USA")+'" maxlength="3" style="text-transform:uppercase">'
+    +   '<div class="hint">Used for the tag on new precise events, and for the <span class="mono">original_tag</span> line prefilled into an approximate trigger &mdash; original_tag holds through civil wars and tag changes where <span class="mono">tag</span> does not.</div></div>'
+    + '<div class="field"><label>Event numbering</label><div class="row">'
+    +   '<input type="number" id="sCB" value="'+s.countryBase+'" min="0"><input type="number" id="sNB" value="'+s.newsBase+'" min="0"></div>'
+    +   '<div class="hint">First country number, then first news number. Keeping them apart stops the two lists colliding once you have more than a handful of each.</div></div>'
+    + '</div><div class="modal-f">'
+    + '<button class="btn" id="sCancel">Cancel</button><button class="btn primary" id="sOk">Save settings</button>'
+    + '</div></div>';
+  document.body.appendChild(veil);
+  veil.onclick = ev=>{ if(ev.target===veil) veil.remove(); };
+  veil.querySelectorAll('input[name=dm]').forEach(r=>{
+    r.onchange = ()=>veil.querySelectorAll(".opt-radio").forEach(l=>l.classList.toggle("on", l.contains(r) && r.checked));
+  });
+  veil.querySelector("#sCancel").onclick = ()=>veil.remove();
+  veil.querySelector("#sOk").onclick = ()=>{
+    const num = (id,def)=>{ const v = parseInt(veil.querySelector(id).value,10); return (isFinite(v) && v>0) ? v : def; };
+    s.driverMode = veil.querySelector('input[name=dm]:checked').value;
+    s.countryW = num("#sCW",210); s.countryH = num("#sCH",176);
+    s.newsW = num("#sNW",397);   s.newsH = num("#sNH",153);
+    const cb = parseInt(veil.querySelector("#sCB").value,10);
+    const nb = parseInt(veil.querySelector("#sNB").value,10);
+    s.defaultTag = (veil.querySelector("#sTag").value||"").toUpperCase().slice(0,3);
+    s.countryBase = isFinite(cb)&&cb>=0 ? cb : 1;
+    s.newsBase = isFinite(nb)&&nb>=0 ? nb : 100;
+    P.events.forEach(e=>{ if(e.pic) refitPic(e); });
+    veil.remove(); touch(true); renderMain();
+    toast("Settings saved");
+  };
+}
+
+/* =====================================================================
+   13. Boot
+   ===================================================================== */
+P = restore();
+if(!P.events.length){ /* start empty; the empty state explains itself */ }
+selId = P.events.length ? P.events[0].id : null;
+if(selId) P.events[0].options.forEach(o=>openOpts[o.id]=true);
+
+$("#ns").value = P.ns;
+$("#ns").oninput = ev=>{ P.ns = ev.target.value; touch(true); updatePreviewSafe(); };
+function updatePreviewSafe(){ const e = P.events.find(x=>x.id===selId); if(e) updatePreview(e); }
+
+$("#btnAddC").onclick = ()=>addEvent("country");
+$("#btnAddN").onclick = ()=>addEvent("news");
+$("#btnSettings").onclick = openSettings;
+$("#btnCheck").onclick = ()=>showIssues(validate(), null);
+$("#btnExport").onclick = exportAll;
+
+$("#btnSave").onclick = ()=>{
+  download(nsClean()+"_project.json", JSON.stringify(P,null,2), "application/json");
+};
+$("#btnImport").onclick = ()=>$("#fileProj").click();
+$("#fileProj").onchange = ev=>{
+  const f = ev.target.files[0]; if(!f) return;
+  const fr = new FileReader();
+  fr.onload = ()=>{
+    try {
+      const p = JSON.parse(fr.result);
+      if(!p || !Array.isArray(p.events)) throw new Error("not a project file");
+      p.settings = Object.assign({}, DEF_SETTINGS, p.settings||{});
+      p.events.forEach(e=>{
+        e.timing = Object.assign({ mode:"triggered", tag:"USA", date:"2025.1.20", hours:23, trigger:"", mtthMonths:0, mtthDays:1 }, e.timing||{});
+        e.options = (e.options||[]).map(o=>Object.assign(newOption(), o));
+      });
+      P = p; selId = P.events.length ? P.events[0].id : null;
+      openOpts = {};
+      $("#ns").value = P.ns || "my_events";
+      touch(true); renderMain();
+      toast("Opened " + (P.events.length) + " events");
+    } catch(err){ toast("That file is not a project export."); }
+  };
+  fr.readAsText(f);
+  ev.target.value = "";
+};
+
+document.addEventListener("keydown", ev=>{
+  if(!(ev.metaKey || ev.ctrlKey)) return;
+  const k = String(ev.key||"").toLowerCase();
+  if(k === "s"){ ev.preventDefault(); $("#btnSave").click(); }
+  else if(k === "z" && !ev.shiftKey){ ev.preventDefault(); undo(); }
+  else if((k === "z" && ev.shiftKey) || k === "y"){ ev.preventDefault(); redo(); }
+});
+
+renderList();
+renderMain();
+refreshCheckBadge();
+HIST.cur = snap();
+</script>
+</body>
+</html>
