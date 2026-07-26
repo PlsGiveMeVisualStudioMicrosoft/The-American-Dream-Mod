@@ -1,0 +1,1910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Story planner &mdash; The American Dream</title>
+<meta name="description" content="Plan the mod's story beats on a zoomable board, one lane per country. Reads the dates straight out of the event maker and writes changes back.">
+<style>
+:root{
+  --paper:#F5F6F2; --card:#FFFFFF; --sunk:#EFF1EC;
+  --ink:#14171A; --ink2:#5A6169; --ink3:#8A9199;
+  --line:#DEE1DA; --line2:#C9CDC3;
+  --country:#1F3A5F; --news:#A33A2A; --ok:#3E6B4A; --warn:#8A6A18;
+  --font-ui:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --r:6px;
+  --gutter:104px; --ruler:46px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--font-ui); font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased; overscroll-behavior:none;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--country); outline-offset:2px}
+.mono{font-family:var(--font-mono)}
+.spacer{flex:1}
+
+/* ---------- event colours ---------- */
+[data-c="navy"] {--c:#1F3A5F; --ct:#eef2f7; --cb:#c6d3e2}
+[data-c="red"]  {--c:#A33A2A; --ct:#fbeceb; --cb:#e2b6b0}
+[data-c="green"]{--c:#3E6B4A; --ct:#e7f0e9; --cb:#c3d6c8}
+[data-c="amber"]{--c:#8A6A18; --ct:#fbf6e8; --cb:#e3d3a6}
+[data-c="plum"] {--c:#5B4A7A; --ct:#f1eef7; --cb:#cdc4dd}
+[data-c="slate"]{--c:#5A6169; --ct:#EFF1EC; --cb:#C9CDC3}
+
+/* ---------- structure ---------- */
+.app{display:flex; flex-direction:column; height:100vh; overflow:hidden}
+.topbar{
+  display:flex; align-items:center; gap:10px; padding:0 16px; height:52px;
+  background:var(--card); border-bottom:1px solid var(--line); flex:none;
+}
+.brand{font-weight:700; letter-spacing:-.01em; font-size:15px; white-space:nowrap; margin-left:4px}
+.brand span{color:var(--ink3); font-weight:500}
+.back{
+  display:inline-flex; align-items:center; gap:6px; text-decoration:none;
+  font-family:var(--font-mono); font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink3); border:1px solid var(--line); border-radius:var(--r);
+  padding:5px 10px; white-space:nowrap;
+}
+.back:hover{color:var(--country); border-color:#a9bed6; background:var(--sunk)}
+@media (max-width:900px){ .back span{display:none} .brand span{display:none} }
+
+.btn{
+  border:1px solid var(--line2); background:var(--card); border-radius:var(--r);
+  padding:6px 11px; font-size:13px; font-weight:500; white-space:nowrap;
+}
+.btn:hover{background:var(--sunk)}
+.btn.primary{background:var(--country); border-color:var(--country); color:#fff}
+.btn.primary:hover{background:#162943}
+.btn.ghost{border-color:transparent; background:transparent; color:var(--ink2)}
+.btn.ghost:hover{background:var(--sunk); color:var(--ink)}
+.btn.sm{padding:3px 8px; font-size:12px}
+.btn.danger{color:var(--news); border-color:#e2b6b0}
+.btn.danger:hover{background:#fbeceb}
+.btn[disabled]{opacity:.45; pointer-events:none}
+
+/* ---------- toolbar ---------- */
+.toolbar{
+  display:flex; align-items:center; gap:9px; padding:0 16px; height:44px; flex:none;
+  background:var(--card); border-bottom:1px solid var(--line); overflow:visible;
+}
+.chip{
+  border:1px solid var(--line2); background:var(--card); border-radius:var(--r);
+  padding:4px 9px; font-size:12px; color:var(--ink2); white-space:nowrap;
+}
+.chip:hover{background:var(--sunk); color:var(--ink)}
+.chip.sm{padding:2px 7px; font-size:11px}
+.chip.on{background:#eef2f7; border-color:#a9bed6; color:var(--country); font-weight:600}
+.zoomer{display:flex; align-items:center; gap:6px}
+.zoomer input[type=range]{width:132px; accent-color:var(--country); cursor:pointer}
+.zlab{font-size:11px; color:var(--ink3); min-width:74px}
+.sep{width:1px; height:22px; background:var(--line); flex:none}
+.q{
+  width:230px; border:1px solid var(--line2); border-radius:var(--r); background:var(--sunk);
+  padding:5px 9px; font-size:12.5px;
+}
+.q:focus{background:var(--card); border-color:var(--country); outline:none; box-shadow:0 0 0 3px rgba(31,58,95,.09)}
+.chk{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink2); cursor:pointer; white-space:nowrap}
+.chk input{margin:0}
+.legend{display:flex; align-items:center; gap:12px; font-size:10.5px; color:var(--ink3); white-space:nowrap}
+.legend i{display:inline-block; vertical-align:-1px; margin-right:5px}
+.lg-dot{width:9px; height:9px; border-radius:50%; background:var(--ink3)}
+.lg-ring{width:9px; height:9px; border-radius:50%; background:var(--card); border:2px solid var(--ink3)}
+.lg-dia{width:8px; height:8px; background:var(--ink3); transform:rotate(45deg)}
+@media (max-width:1180px){ .legend{display:none} }
+@media (max-width:820px){ .q{width:140px} .zoomer input[type=range]{width:80px} .zlab{display:none} }
+
+/* popovers reuse the event maker's picker */
+.pick-wrap{position:relative}
+.pick{
+  position:absolute; z-index:60; top:calc(100% + 6px); left:0; width:250px; max-width:88vw;
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r);
+  box-shadow:0 10px 30px rgba(20,23,26,.14); overflow:hidden;
+}
+.pick-h{display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line)}
+.pick-h b{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3)}
+.pick-list{max-height:280px; overflow-y:auto; padding:5px}
+.pick-row{display:flex; align-items:center; gap:8px; padding:5px 7px; border-radius:var(--r); cursor:pointer; font-size:12.5px}
+.pick-row:hover{background:var(--sunk)}
+.pick-row .n{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pick-row .ct{font-family:var(--font-mono); font-size:10.5px; color:var(--ink3)}
+.pick-row .sw{width:9px; height:9px; border-radius:50%; background:var(--c,var(--ink3)); flex:none}
+.pick-empty{padding:16px 12px; text-align:center; color:var(--ink3); font-size:12px}
+
+/* ---------- stage ---------- */
+.stage{position:relative; flex:1; min-height:0; overflow:hidden; background:var(--paper)}
+.ruler{
+  position:absolute; left:0; right:0; top:0; height:var(--ruler); z-index:6;
+  background:var(--card); border-bottom:1px solid var(--line); overflow:hidden;
+}
+.rw{position:absolute; left:0; top:0; bottom:0; width:0; will-change:transform}
+.rk{position:absolute; top:0; bottom:0; width:0}
+.rk .stem{position:absolute; left:0; bottom:0; width:1px; background:var(--line); height:9px}
+.rk .lab{
+  position:absolute; left:5px; bottom:9px; font-family:var(--font-mono); font-size:10.5px;
+  color:var(--ink3); white-space:nowrap; letter-spacing:.02em;
+}
+.rk.maj .stem{background:var(--line2); height:100%; opacity:.55}
+.rk.maj .lab{bottom:auto; top:5px; font-size:11px; font-weight:700; color:var(--ink2); letter-spacing:.06em}
+.rk.now .stem{background:var(--news); height:100%; opacity:.5}
+.rk.now .lab{color:var(--news)}
+.r-year{
+  position:absolute; left:9px; top:5px; z-index:2; font-family:var(--font-mono); font-size:11px;
+  font-weight:700; letter-spacing:.06em; color:var(--ink3); background:var(--card);
+  padding:0 8px 0 0; pointer-events:none;
+}
+
+.gutter{
+  position:absolute; left:0; top:var(--ruler); bottom:0; width:var(--gutter); z-index:5;
+  background:var(--card); border-right:1px solid var(--line); overflow:hidden;
+}
+.gw{position:absolute; left:0; right:0; top:0; will-change:transform}
+.lane-h{position:absolute; left:0; right:0; display:flex; align-items:center; gap:7px; padding:0 10px}
+.lane-tag{
+  font-family:var(--font-mono); font-size:12px; font-weight:700; letter-spacing:.05em;
+  color:var(--c,var(--ink)); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.lane-n{font-family:var(--font-mono); font-size:10px; color:var(--ink3); flex:none}
+.lane-rule{position:absolute; left:0; right:0; height:1px; background:var(--line)}
+
+.canvas{position:absolute; left:0; right:0; top:var(--ruler); bottom:0; overflow:hidden; cursor:grab; touch-action:none}
+.canvas.drag{cursor:grabbing}
+.canvas.busy{cursor:ew-resize}
+.world{position:absolute; left:0; top:0; will-change:transform}
+.band{position:absolute; left:0; background:transparent}
+.band.alt{background:rgba(0,0,0,.014)}
+.band-line{position:absolute; left:0; height:1px; background:var(--line)}
+.axis{position:absolute; left:0; height:1px; background:var(--line2)}
+
+.node{
+  position:absolute; width:12px; height:12px; margin-left:-6px; margin-top:-6px; border-radius:50%;
+  background:var(--c); border:2px solid var(--paper); z-index:4; cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+.node:hover{transform:scale(1.3); box-shadow:0 0 0 4px var(--ct)}
+.node.ring{background:var(--card); box-shadow:inset 0 0 0 2.5px var(--c)}
+.node.ring:hover{box-shadow:inset 0 0 0 2.5px var(--c), 0 0 0 4px var(--ct)}
+.node.note{border-radius:2px}
+.node.note:hover{transform:scale(1.3) rotate(45deg)}
+.node.sel{box-shadow:0 0 0 4px var(--c)}
+.node.halo::after{
+  content:""; position:absolute; inset:-5px; border-radius:50%; border:1px dashed var(--c); opacity:.5;
+}
+.stem-v{position:absolute; width:1px; background:var(--line2); z-index:2}
+
+.card{
+  position:absolute; width:212px; background:var(--card); z-index:3;
+  border:1px solid var(--line); border-left:3px solid var(--c); border-radius:var(--r);
+  box-shadow:0 1px 2px rgba(20,23,26,.05); overflow:hidden; cursor:pointer;
+  animation:rise .22s ease both;
+}
+@keyframes rise{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+.card:hover{border-color:var(--cb); box-shadow:0 4px 14px rgba(20,23,26,.10)}
+.card.sel{border-color:var(--c); box-shadow:0 0 0 2px var(--ct), 0 4px 14px rgba(20,23,26,.10)}
+.card-img{display:block; width:100%; height:78px; object-fit:cover; background:var(--sunk); border-bottom:1px solid var(--line)}
+.card-b{padding:8px 10px 9px}
+.card-k{
+  display:flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:10px;
+  letter-spacing:.04em; color:var(--ink3); margin-bottom:3px;
+}
+.card-k .src{color:var(--c); font-weight:700}
+.card h4{margin:0; font-size:12.5px; font-weight:600; line-height:1.32; letter-spacing:-.005em}
+.card h4.empty{color:var(--ink3); font-weight:400; font-style:italic}
+.card p{
+  margin:4px 0 0; font-size:11.5px; color:var(--ink2); line-height:1.42;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+}
+.card-d{margin-top:6px; font-family:var(--font-mono); font-size:10px; color:var(--ink3)}
+.chips{display:flex; flex-wrap:wrap; gap:4px; margin-top:6px}
+.tg{
+  font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  padding:2px 5px; border-radius:3px; background:var(--ct); color:var(--c);
+}
+.tg.plain{background:var(--sunk); color:var(--ink3)}
+
+.tip{
+  position:absolute; z-index:70; pointer-events:none; background:var(--ink); color:#fff;
+  padding:6px 9px; border-radius:var(--r); font-size:12px; line-height:1.4; max-width:260px;
+  box-shadow:0 6px 20px rgba(0,0,0,.25);
+}
+.tip b{display:block; font-size:10px; letter-spacing:.07em; text-transform:uppercase; color:#b9c2cc; font-weight:700}
+
+.stage-msg{
+  pointer-events:none;
+  position:absolute; left:50%; top:52%; transform:translate(-50%,-50%); z-index:7;
+  max-width:430px; text-align:center; color:var(--ink2); background:var(--paper); padding:10px;
+}
+.stage-msg h2{font-size:16px; margin:0 0 8px; color:var(--ink)}
+.stage-msg p{font-size:13px; margin:0 0 16px; line-height:1.55}
+.stage-msg .btn{pointer-events:auto}
+
+/* ---------- drawer ---------- */
+.drawer{flex:none; background:var(--card); border-top:1px solid var(--line); display:flex; flex-direction:column; max-height:42vh}
+.drawer.shut .drawer-b{display:none}
+.drawer-h{display:flex; align-items:center; gap:10px; padding:0 16px; height:38px; flex:none}
+.dtoggle{
+  display:flex; align-items:center; gap:7px; border:none; background:none; padding:0;
+  font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); font-weight:700;
+}
+.dtoggle:hover{color:var(--ink)}
+.dtoggle .tri{width:9px; height:9px; transition:transform .16s ease}
+.drawer.shut .dtoggle .tri{transform:rotate(-90deg)}
+.dcount{font-family:var(--font-mono); font-size:11px; color:var(--ink3)}
+.drawer-h select{border:1px solid var(--line2); border-radius:var(--r); background:var(--card); padding:3px 6px; font-size:12px}
+.drawer-b{overflow-y:auto; padding:0 10px 12px}
+.tray{
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:8px 6px 10px; margin:0 0 6px;
+  border-bottom:1px solid var(--line);
+}
+.tray b{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); font-weight:700}
+.tray .hint-i{font-size:11.5px; color:var(--ink3)}
+.uchip{
+  display:inline-flex; align-items:center; gap:6px; border:1px dashed var(--line2); background:var(--sunk);
+  border-radius:var(--r); padding:3px 8px; font-size:12px; color:var(--ink2); max-width:230px;
+}
+.uchip:hover{border-color:var(--country); color:var(--country); background:#eef2f7}
+.uchip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.row-i{
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:1px solid transparent;
+  background:none; border-radius:var(--r); padding:6px 8px; margin-bottom:1px;
+}
+.row-i:hover{background:var(--sunk)}
+.row-i.sel{background:var(--sunk); border-color:var(--line2)}
+.row-i .sw{width:3px; align-self:stretch; border-radius:2px; background:var(--c); flex:none}
+.row-i .dt{font-family:var(--font-mono); font-size:11.5px; color:var(--ink3); flex:none; width:96px}
+.row-i .ln{font-family:var(--font-mono); font-size:10.5px; font-weight:700; color:var(--c); flex:none; width:52px}
+.row-i .ti{flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.row-i .ti.empty{color:var(--ink3); font-style:italic}
+.row-i .kx{font-family:var(--font-mono); font-size:10.5px; color:var(--ink3); flex:none}
+.list-empty{padding:22px 12px; text-align:center; color:var(--ink3); font-size:12.5px; line-height:1.5}
+
+/* ---------- forms / modal ---------- */
+.field{margin-bottom:13px}
+.field:last-child{margin-bottom:0}
+.field > label{display:block; font-size:12px; font-weight:600; color:var(--ink2); margin-bottom:5px}
+.hint{font-size:11.5px; color:var(--ink3); margin-top:5px; line-height:1.4}
+input[type=text],input[type=number],select,textarea{
+  width:100%; border:1px solid var(--line2); border-radius:var(--r); background:var(--card);
+  padding:7px 9px; font-size:13px;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--country); outline:none; box-shadow:0 0 0 3px rgba(31,58,95,.09)}
+textarea{resize:vertical; font-size:13px; line-height:1.5}
+.row{display:flex; gap:10px; flex-wrap:wrap}
+.row > *{flex:1; min-width:120px}
+.veil{position:fixed; inset:0; background:rgba(20,23,26,.4); display:flex; align-items:center;
+  justify-content:center; z-index:100; padding:20px; animation:fade .14s ease both}
+@keyframes fade{from{opacity:0} to{opacity:1}}
+.modal{background:var(--card); border-radius:8px; width:560px; max-width:100%; max-height:88vh;
+  overflow-y:auto; box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal-h{padding:13px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:9px}
+.modal-h h3{margin:0; font-size:14px}
+.modal-b{padding:18px}
+.modal-f{padding:12px 18px; border-top:1px solid var(--line); display:flex; gap:8px; align-items:center}
+.badge{
+  font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  padding:3px 6px; border-radius:3px; background:var(--ct); color:var(--c);
+}
+.swatches{display:flex; gap:6px}
+.sw-b{width:26px; height:26px; border-radius:50%; border:2px solid var(--line); background:var(--c); padding:0}
+.sw-b:hover{border-color:var(--ink3)}
+.sw-b.on{border-color:var(--ink); box-shadow:0 0 0 2px var(--card) inset}
+.drop{
+  border:1.5px dashed var(--line2); border-radius:var(--r); background:var(--sunk);
+  padding:16px; text-align:center; color:var(--ink2); font-size:12.5px; cursor:pointer;
+}
+.drop:hover,.drop.over{border-color:var(--country); background:#eef2f7; color:var(--country)}
+.pic-row{display:flex; gap:12px; align-items:flex-start}
+.pic-prev{border:1px solid var(--line2); border-radius:3px; width:132px; height:74px; object-fit:cover; flex:none; display:block}
+.link-row{display:flex; gap:6px; margin-bottom:6px; align-items:center}
+.link-row input{flex:1}
+.kbd{
+  display:inline-block; font-family:var(--font-mono); font-size:11px; background:var(--sunk);
+  border:1px solid var(--line2); border-bottom-width:2px; border-radius:4px; padding:1px 6px; color:var(--ink2);
+}
+.keys{display:grid; grid-template-columns:auto 1fr; gap:9px 14px; align-items:center; font-size:12.5px}
+.keys div:nth-child(even){color:var(--ink2)}
+.warn-bar{
+  background:#fbf6e8; border:1px solid #e3d3a6; color:var(--warn); border-radius:var(--r);
+  padding:9px 11px; font-size:12.5px; line-height:1.45; margin-bottom:14px;
+}
+.toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+  background:var(--ink); color:#fff; padding:9px 16px; border-radius:var(--r); font-size:13px;
+  z-index:200; box-shadow:0 6px 20px rgba(0,0,0,.25); animation:fade .14s ease both}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important; animation:none!important} }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <a class="back" href="index.html" title="Back to the mod roadmap">&larr;<span>Roadmap</span></a>
+    <a class="back" href="events.html" id="lnkEvents" title="Open the event maker">&larr;<span>Event maker</span></a>
+    <div class="brand">Story planner <span>&middot; The American Dream</span></div>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="btnHelp" title="Keyboard shortcuts">Shortcuts</button>
+    <button class="btn ghost" id="btnOutline" title="Copy the whole board as a Markdown outline">Copy outline</button>
+    <button class="btn ghost" id="btnImport">Import</button>
+    <button class="btn" id="btnExport">Export</button>
+    <button class="btn primary" id="btnNew">+ Note</button>
+  </div>
+
+  <div class="toolbar">
+    <div class="zoomer">
+      <button class="chip" id="zOut" title="Zoom out">&minus;</button>
+      <input type="range" id="zoom" min="0" max="1000" value="620" aria-label="Zoom">
+      <button class="chip" id="zIn" title="Zoom in">+</button>
+      <span class="zlab mono" id="zLab"></span>
+    </div>
+    <button class="chip" id="btnFit" title="Fit every event on screen">Fit all</button>
+    <div class="sep"></div>
+    <input type="text" id="q" class="q" placeholder="Search titles, tags, notes&hellip;" spellcheck="false">
+    <div class="pick-wrap">
+      <button class="chip" id="btnLanes">Lanes</button>
+      <div class="pick" id="pickLanes" hidden></div>
+    </div>
+    <div class="pick-wrap">
+      <button class="chip" id="btnTags">Tags</button>
+      <div class="pick" id="pickTags" hidden></div>
+    </div>
+    <label class="chk" title="Events that live in the event maker"><input type="checkbox" id="srcEv" checked> Events</label>
+    <label class="chk" title="Timeline-only planning notes"><input type="checkbox" id="srcNote" checked> Notes</label>
+    <div class="spacer"></div>
+    <div class="legend">
+      <span><i class="lg-dot"></i>Precise date</span>
+      <span><i class="lg-ring"></i>Approximate</span>
+      <span><i class="lg-dia"></i>Note</span>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="ruler" id="ruler"><div class="rw" id="rw"></div><span class="r-year" id="rYear"></span></div>
+    <div class="canvas" id="canvas"><div class="world" id="world"></div></div>
+    <div class="gutter" id="gutter"><div class="gw" id="gw"></div></div>
+    <div class="tip" id="tip" hidden></div>
+    <div class="stage-msg" id="stageMsg" hidden></div>
+  </div>
+
+  <div class="drawer" id="drawer">
+    <div class="drawer-h">
+      <button class="dtoggle" id="dToggle">
+        <svg class="tri" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 3.5L5 6.5L8 3.5"/></svg>
+        Everything on the board
+      </button>
+      <span class="dcount mono" id="dCount"></span>
+      <div class="spacer"></div>
+      <label class="chk">Sort
+        <select id="sort">
+          <option value="date">by date</option>
+          <option value="lane">by lane</option>
+          <option value="title">by title</option>
+        </select>
+      </label>
+    </div>
+    <div class="drawer-b" id="dBody"></div>
+  </div>
+
+</div>
+
+<input type="file" id="fileJson" accept="application/json,.json" hidden>
+<input type="file" id="fileImg" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   Story planner — The American Dream
+
+   A planning surface for the mod's story. Not to be confused with
+   timeline.html, which is the mod's own timeline page. Two kinds of thing sit on it:
+
+     • Events    — read live out of the event maker's autosave. Their date
+                   is the mod's real date, so changing it here changes the
+                   mod. Country tag decides the lane.
+     • Notes     — planning beats that exist only here. Nothing exports
+                   them; they are for working out the shape of the story
+                   before it is written as events.
+
+   Nothing here writes an event maker file to disk. It edits the same
+   browser storage the event maker autosaves into, so both pages always
+   show the same project.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   0. Storage — same shim the event maker uses. Sandboxed previews block
+      localStorage; saved to disk and opened locally it works.
+   --------------------------------------------------------------------- */
+const store = (()=>{
+  let mem = {}, live = false;
+  try { localStorage.setItem("__t","1"); localStorage.removeItem("__t"); live = true; } catch(e){ live = false; }
+  return {
+    live,
+    get(k){ try { return live ? localStorage.getItem(k) : (k in mem ? mem[k] : null); } catch(e){ return k in mem ? mem[k] : null; } },
+    set(k,v){ try { if(live) localStorage.setItem(k,v); else mem[k]=v; return true; } catch(e){ mem[k]=v; return false; } }
+  };
+})();
+
+const EKEY = "hoi4_event_maker_v1";        // the event maker's project
+const TKEY = "hoi4_story_planner_v1";      // this page's own data
+const TKEY_OLD = "hoi4_timeline_v1";       // what it was called before the rename
+
+const uid = () => Math.random().toString(36).slice(2,10);
+const esc = s => String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const $   = s => document.querySelector(s);
+const clamp = (v,a,b) => v<a?a:(v>b?b:v);
+
+/* ---------------------------------------------------------------------
+   1. Dates. The mod speaks "2025.1.20"; people speak "20 Jan 2025".
+      Both are accepted on input, the mod's form is what gets stored.
+   --------------------------------------------------------------------- */
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DAY_MS = 86400000;
+
+function parseDate(s){
+  const t = String(s==null?"":s).trim();
+  if(!t) return null;
+  let m = /^(-?\d{1,5})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/.exec(t);          // 2025.1.20 / 2025-01-20
+  if(!m){
+    const w = /^(\d{1,2})\s+([A-Za-z]{3,})\s+(-?\d{1,5})$/.exec(t);        // 20 Jan 2025
+    if(w){
+      const i = MON.findIndex(x=>x.toLowerCase() === w[2].slice(0,3).toLowerCase());
+      if(i < 0) return null;
+      m = [null, w[3], String(i+1), w[1]];
+    }
+  }
+  if(!m) return null;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  if(!(mo >= 1 && mo <= 12) || !(d >= 1 && d <= 31)) return null;
+  const probe = fromDay(dayOf({y:y, m:mo, d:d}));
+  if(probe.m !== mo || probe.d !== d) return null;                          // 31 Feb and friends
+  return { y:y, m:mo, d:d };
+}
+function dayOf(o){
+  const dt = new Date(Date.UTC(2000, o.m-1, o.d));
+  dt.setUTCFullYear(o.y);
+  return Math.round(dt.getTime()/DAY_MS);
+}
+function fromDay(n){
+  const dt = new Date(Math.round(n)*DAY_MS);
+  return { y:dt.getUTCFullYear(), m:dt.getUTCMonth()+1, d:dt.getUTCDate() };
+}
+function modDate(o){ return o ? (o.y+"."+o.m+"."+o.d) : ""; }
+function niceDate(o){ return o ? (o.d+" "+MON[o.m-1]+" "+o.y) : ""; }
+function prevDay(d){
+  const o = parseDate(d);
+  return o ? modDate(fromDay(dayOf(o)-1)) : "1935.12.31";
+}
+const TODAY = (()=>{ const n = new Date(); return { y:n.getFullYear(), m:n.getMonth()+1, d:n.getDate() }; })();
+
+/* ---------------------------------------------------------------------
+   2. Palette. Six colours, all pulled from the mod tooling's own set.
+   --------------------------------------------------------------------- */
+const COLORS = ["navy","red","green","amber","plum","slate"];
+const COLOR_NAME = { navy:"Navy", red:"Red", green:"Green", amber:"Amber", plum:"Plum", slate:"Slate" };
+
+/* Lanes get a stable colour so the eye can follow a country across the page. */
+function laneColor(lane){
+  let h = 0;
+  for(let i=0;i<lane.length;i++) h = (h*31 + lane.charCodeAt(i)) >>> 0;
+  return COLORS[h % COLORS.length];
+}
+
+/* ---------------------------------------------------------------------
+   3. State
+
+   T  — this page's own data.
+        items : planning notes, which belong to nobody else
+        meta  : sidecar for event maker events, keyed by event id. Holds
+                things the mod file has no room for (colour, tags, notes)
+                plus planDate, a story date for triggered-only events that
+                have no date of their own.
+   P  — the event maker project, read from its autosave.
+   --------------------------------------------------------------------- */
+const DEF_T = {
+  v:1,
+  items:[],            // { id,title,desc,date,lane,color,tags[],image,links[],notes }
+  meta:{},             // evId -> { planDate,color,tags[],notes,lane }
+  laneOrder:[],
+  hiddenLanes:[],
+  hiddenTags:[],
+  view:{ px:0.55, x:60, y:0 },
+  ui:{ drawer:true, srcEv:true, srcNote:true, sort:"date" }
+};
+
+let T = null;          // planner data
+let P = null;          // event maker project (may be null)
+let nums = {};         // evId -> event number, mirrors the event maker's numbering
+let selKey = null;     // "ev:<id>" or "note:<id>"
+let query = "";
+
+function newNote(date, lane){
+  return { id:uid(), title:"", desc:"", date:date||modDate(TODAY), lane:(lane||"GLOBAL"),
+           color:"slate", tags:[], image:null, links:[], notes:"" };
+}
+function metaOf(id){
+  if(!T.meta[id]) T.meta[id] = { planDate:"", color:"", tags:[], notes:"", lane:"" };
+  const m = T.meta[id];
+  if(!Array.isArray(m.tags)) m.tags = [];
+  return m;
+}
+/* Sidecar entries with nothing in them are not worth storing. */
+function tidyMeta(){
+  Object.keys(T.meta).forEach(id=>{
+    const m = T.meta[id];
+    if(!m) { delete T.meta[id]; return; }
+    const empty = !m.planDate && !m.color && !m.notes && !m.lane && !(m.tags||[]).length;
+    if(empty) delete T.meta[id];
+  });
+}
+
+/* ---- this page's persistence ---- */
+let quotaWarned = false, saveTimer = null;
+function saveSoon(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveT, 400); }
+function saveT(){
+  tidyMeta();
+  const ok = store.set(TKEY, JSON.stringify(T));
+  if(!ok && !quotaWarned && store.live){
+    quotaWarned = true;
+    toast("Autosave stopped \u2014 browser storage is full. Export the planner to keep it.");
+  }
+}
+function loadT(){
+  const raw = store.get(TKEY) || store.get(TKEY_OLD);
+  if(raw){
+    try {
+      const t = JSON.parse(raw);
+      if(t && typeof t === "object"){
+        const out = Object.assign({}, DEF_T, t);
+        out.view = Object.assign({}, DEF_T.view, t.view||{});
+        out.ui   = Object.assign({}, DEF_T.ui, t.ui||{});
+        out.items = Array.isArray(t.items) ? t.items.map(normNote) : [];
+        out.meta = (t.meta && typeof t.meta === "object") ? t.meta : {};
+        out.laneOrder   = Array.isArray(t.laneOrder) ? t.laneOrder : [];
+        out.hiddenLanes = Array.isArray(t.hiddenLanes) ? t.hiddenLanes : [];
+        out.hiddenTags  = Array.isArray(t.hiddenTags) ? t.hiddenTags : [];
+        return out;
+      }
+    } catch(e){}
+  }
+  return JSON.parse(JSON.stringify(DEF_T));
+}
+function normNote(n){
+  const o = Object.assign(newNote(), n||{});
+  o.tags = Array.isArray(o.tags) ? o.tags.filter(Boolean) : [];
+  o.links = Array.isArray(o.links) ? o.links.filter(l=>l && l.url) : [];
+  if(COLORS.indexOf(o.color) === -1) o.color = "slate";
+  o.lane = String(o.lane||"GLOBAL").toUpperCase();
+  return o;
+}
+
+/* ---- the event maker's project ---- */
+function loadP(){
+  const raw = store.get(EKEY);
+  if(!raw) return null;
+  try {
+    const p = JSON.parse(raw);
+    if(p && Array.isArray(p.events)) return p;
+  } catch(e){}
+  return null;
+}
+function saveP(){
+  if(!P) return;
+  const ok = store.set(EKEY, JSON.stringify(P));
+  if(!ok) toast("Could not save back to the event maker \u2014 browser storage is full.");
+}
+function nsClean(){
+  return String((P && P.ns) || "my_events").trim().replace(/[^A-Za-z0-9_]/g,"_").toLowerCase() || "my_events";
+}
+/* Same walk the event maker does, so the keys shown here match the export. */
+function assignNums(){
+  nums = {};
+  if(!P) return;
+  const s = P.settings || {};
+  let c = s.countryBase || 1, n = s.newsBase || 100;
+  const used = new Set();
+  P.events.forEach(e=>{ if(e.num != null) used.add(e.num); });
+  P.events.forEach(e=>{
+    if(e.num != null){ nums[e.id] = e.num; return; }
+    if(e.type === "country"){ while(used.has(c)) c++; nums[e.id] = c; used.add(c); c++; }
+    else { while(used.has(n)) n++; nums[e.id] = n; used.add(n); n++; }
+  });
+}
+function splitText(t){
+  const s = String(t==null?"":t);
+  const i = s.indexOf("\n");
+  if(i === -1) return { title:s.trim(), desc:"" };
+  return { title:s.slice(0,i).trim(), desc:s.slice(i+1).replace(/^\n+/,"") };
+}
+function joinText(orig, title, desc){
+  if(!desc) return title;
+  const sep = /^[^\n]*\n(\n+)/.test(String(orig||"")) ? "\n\n" : "\n";
+  return title + sep + desc;
+}
+/* The event maker keeps a `date >` line inside the approximate trigger.
+   Anything else in that box is the author's and must survive. */
+function syncApxTrigger(e){
+  const line = "date > " + prevDay(e.timing.date);
+  let lines = String(e.timing.trigger||"").split("\n");
+  let found = false;
+  lines = lines.map(l=>{ if(/^\s*date\s*>/.test(l)){ found = true; return line; } return l; });
+  if(!found){
+    while(lines.length && !lines[lines.length-1].trim()) lines.pop();
+    lines.push(line);
+  }
+  e.timing.trigger = lines.join("\n");
+}
+
+/* ---------------------------------------------------------------------
+   4. One list to draw from. Events and notes are folded into the same
+      shape so layout, search and the list below never care which is which.
+   --------------------------------------------------------------------- */
+function derive(force){
+  const out = [];
+
+  if(P && (force || T.ui.srcEv)){
+    P.events.forEach(e=>{
+      const m = T.meta[e.id] || {};
+      const t = e.timing || {};
+      const dated = (t.mode === "precise" || t.mode === "approximate");
+      const raw = dated ? t.date : (m.planDate || "");
+      const d = parseDate(raw);
+      const s = splitText(e.text);
+      out.push({
+        key:"ev:"+e.id, src:"ev", id:e.id, ev:e,
+        title:s.title, desc:s.desc,
+        date:d, dateStr:raw,
+        lane:String(m.lane || t.tag || "GLOBAL").toUpperCase(),
+        color:m.color || (e.type === "news" ? "red" : "navy"),
+        tags:(m.tags||[]).slice(),
+        image:(e.pic && e.pic.url) || null,
+        notes:m.notes || "",
+        links:[],
+        kind:e.type, mode:t.mode || "triggered",
+        planned:!dated,
+        evkey:nsClean()+"."+(nums[e.id] != null ? nums[e.id] : "?")
+      });
+    });
+  }
+  if(force || T.ui.srcNote){
+    T.items.forEach(n=>{
+      out.push({
+        key:"note:"+n.id, src:"note", id:n.id, note:n,
+        title:n.title, desc:n.desc,
+        date:parseDate(n.date), dateStr:n.date,
+        lane:String(n.lane||"GLOBAL").toUpperCase(),
+        color:n.color || "slate",
+        tags:(n.tags||[]).slice(),
+        image:n.image || null,
+        notes:n.notes || "",
+        links:(n.links||[]).slice(),
+        kind:"note", mode:"note", planned:false,
+        evkey:""
+      });
+    });
+  }
+  return out;
+}
+
+function matches(it){
+  if(T.hiddenLanes.indexOf(it.lane) !== -1) return false;
+  if(it.tags.length && it.tags.every(t=>T.hiddenTags.indexOf(t) !== -1)) return false;
+  if(!query) return true;
+  const q = query.toLowerCase();
+  return (it.title+" "+it.desc+" "+it.notes+" "+it.tags.join(" ")+" "+it.lane+" "+it.evkey).toLowerCase().indexOf(q) !== -1;
+}
+
+function laneList(all){
+  const seen = {};
+  all.forEach(it=>{ seen[it.lane] = (seen[it.lane]||0) + 1; });
+  const names = Object.keys(seen);
+  const ord = T.laneOrder.filter(l=>names.indexOf(l) !== -1);
+  names.sort().forEach(l=>{ if(ord.indexOf(l) === -1) ord.push(l); });
+  T.laneOrder = ord.slice();
+  return ord.map(l=>({ name:l, n:seen[l] }));
+}
+function allTags(all){
+  const seen = {};
+  all.forEach(it=>it.tags.forEach(t=>{ seen[t] = (seen[t]||0)+1; }));
+  return Object.keys(seen).sort().map(t=>({ name:t, n:seen[t] }));
+}
+
+/* ---------------------------------------------------------------------
+   5. Geometry
+
+   x is measured in pixels from 1 Jan 2000, so it never shifts when data
+   is added. Pan is a transform on one wrapper, which keeps dragging cheap.
+   --------------------------------------------------------------------- */
+const CARD_W = 212, GAP = 10, STEM = 26, LANE_PAD = 18, MIN_SIDE = 30;
+/* A lane only ever grows this far from its axis. Zoomed out, the cards
+   that would pile up beyond it drop back to bare nodes rather than
+   turning every lane into a mile of scrolling. */
+const MAX_SIDE = 340;
+const EPOCH = dayOf({ y:2000, m:1, d:1 });
+const PX_MIN = 0.0025, PX_MAX = 90;
+
+const world = $("#world"), canvas = $("#canvas"), rw = $("#rw"), gw = $("#gw");
+let REC = [];            // render records for dated, visible items
+let seenKeys = new Set(); // so a re-render on every keystroke does not re-animate
+let LANES = [];          // { name, color, top, axis, h, n }
+let bounds = { l:0, r:0 };
+let worldH = 0;
+
+const xOf = day => (day - EPOCH) * T.view.px;
+const dayAt = x => EPOCH + x / T.view.px;
+
+function viewW(){ return canvas.clientWidth; }
+function viewH(){ return canvas.clientHeight; }
+
+/* Slider position <-> pixels per day, on a log scale so the whole range
+   from a fortnight to a century is reachable with one thumb. */
+function pxFromSlider(v){
+  const t = clamp(v,0,1000)/1000;
+  return PX_MIN * Math.pow(PX_MAX/PX_MIN, t);
+}
+function sliderFromPx(px){
+  const t = Math.log(clamp(px,PX_MIN,PX_MAX)/PX_MIN) / Math.log(PX_MAX/PX_MIN);
+  return Math.round(t*1000);
+}
+function spanLabel(){
+  const days = viewW() / T.view.px;
+  if(days < 45)   return Math.round(days) + " days";
+  if(days < 400)  return Math.round(days/30.4) + " months";
+  if(days < 4000) return Math.round(days/365.25) + " years";
+  return Math.round(days/3652.5) + " decades";
+}
+
+/* ---------------------------------------------------------------------
+   6. Build. Cards are made once per data change, measured, then placed.
+      Zooming reuses the same nodes and only moves them.
+   --------------------------------------------------------------------- */
+function cardHTML(it){
+  const s = it.src === "ev";
+  const key = s ? esc(it.evkey) : "note";
+  const kind = s ? (it.kind === "news" ? "news" : "country") : "";
+  let h = "";
+  if(it.image) h += '<img class="card-img" src="'+esc(it.image)+'" alt="">';
+  h += '<div class="card-b">';
+  h += '<div class="card-k"><span class="src">'+key+'</span>'+(kind?'<span>'+kind+'</span>':'')
+     + (it.planned?'<span>planned</span>':'')+'</div>';
+  h += '<h4'+(it.title?'':' class="empty"')+'>'+esc(it.title||"Untitled")+'</h4>';
+  if(it.desc) h += '<p>'+esc(it.desc)+'</p>';
+  h += '<div class="card-d">'+esc(niceDate(it.date))+(it.mode==="approximate"?" &middot; around":"")+'</div>';
+  if(it.tags.length){
+    h += '<div class="chips">' + it.tags.slice(0,4).map(t=>'<span class="tg">'+esc(t)+'</span>').join("") + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function rebuild(){
+  assignNums();
+  const all = derive();
+  const vis = all.filter(matches);
+  const dated = vis.filter(it=>it.date);
+
+  /* lanes come from everything visible so an empty-but-filtered lane
+     does not vanish mid-edit */
+  const lanes = laneList(vis).filter(l=>T.hiddenLanes.indexOf(l.name) === -1);
+  LANES = lanes.map(l=>({ name:l.name, color:laneColor(l.name), n:l.n, top:0, axis:0, h:0 }));
+  const laneIx = {};
+  LANES.forEach((l,i)=>{ laneIx[l.name] = i; });
+
+  world.innerHTML = "";
+  REC = [];
+  if(!LANES.length){
+    layout(); paintGutter(); paintRuler();
+    paintList(vis, all); updateStageMsg(all, vis, []);
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  dated.sort((a,b)=>dayOf(a.date) - dayOf(b.date));
+
+  const perLane = {};
+  dated.forEach(it=>{
+    const li = laneIx[it.lane];
+    if(li == null) return;
+    perLane[li] = (perLane[li]||0) + 1;
+
+    const stem = document.createElement("div");
+    stem.className = "stem-v";
+
+    const node = document.createElement("div");
+    node.className = "node" + (it.mode === "precise" || it.mode === "note" ? "" : " ring")
+                   + (it.mode === "approximate" ? " halo" : "")
+                   + (it.src === "note" ? " note" : "");
+    node.setAttribute("data-c", it.color);
+    node.dataset.k = it.key;
+    node.tabIndex = 0;
+
+    const card = document.createElement("article");
+    card.className = "card";
+    card.setAttribute("data-c", it.color);
+    card.dataset.k = it.key;
+    card.style.visibility = "hidden";
+    if(seenKeys.has(it.key)) card.style.animation = "none";
+    card.innerHTML = cardHTML(it);
+
+    frag.appendChild(stem); frag.appendChild(node); frag.appendChild(card);
+    REC.push({ it:it, el:card, node:node, stem:stem, li:li, side:(perLane[li] % 2 ? "t" : "b"), h:0, x:0, y:0 });
+  });
+  world.appendChild(frag);
+
+  /* one measuring pass, then everything is arithmetic */
+  REC.forEach(r=>{ r.h = r.el.offsetHeight || 60; });
+
+  layout();
+  REC.forEach(r=>{ r.el.style.visibility = ""; });
+  seenKeys = new Set(REC.map(r=>r.it.key));
+  paintGutter();
+  paintRuler();
+  paintList(vis, all);
+  updateStageMsg(all, vis, dated);
+  selHighlight();
+}
+
+/* Pack cards away from the axis, alternating sides, sliding outwards
+   until nothing overlaps. Runs on every zoom, so it stays arithmetic. */
+function layout(){
+  const byLane = {};
+  REC.forEach(r=>{
+    r.x = xOf(dayOf(r.it.date));
+    (byLane[r.li] = byLane[r.li] || []).push(r);
+  });
+
+  let minX = Infinity, maxX = -Infinity;
+  LANES.forEach((lane, li)=>{
+    const rs = (byLane[li]||[]).slice().sort((a,b)=>{
+      const sa = a.it.key === selKey ? 0 : 1, sb = b.it.key === selKey ? 0 : 1;
+      return sa - sb || a.x - b.x;                        // what is selected keeps its card
+    });
+    const put = { t:[], b:[] };
+    let hid = 0;
+    rs.forEach(r=>{
+      const L = r.x - CARD_W/2, R = r.x + CARD_W/2;
+      if(L < minX) minX = L;
+      if(R > maxX) maxX = R;
+      const rows = put[r.side];
+      let d = STEM, guard = 0;
+      while(guard++ < 400){
+        let hit = null;
+        for(let i=0;i<rows.length;i++){
+          const o = rows[i];
+          if(o.R + GAP <= L || o.L - GAP >= R) continue;          // no horizontal overlap
+          if(o.d + o.h + GAP <= d || o.d >= d + r.h + GAP) continue; // no vertical overlap
+          hit = o; break;
+        }
+        if(!hit) break;
+        d = hit.d + hit.h + GAP;
+      }
+      r.d = d;
+      r.off = (d + r.h > MAX_SIDE);
+      if(r.off){ hid++; return; }
+      rows.push({ L:L, R:R, d:d, h:r.h });
+    });
+    lane.hid = hid;
+    const up   = Math.max(MIN_SIDE, put.t.reduce((m,o)=>Math.max(m, o.d + o.h), 0));
+    const down = Math.max(MIN_SIDE, put.b.reduce((m,o)=>Math.max(m, o.d + o.h), 0));
+    lane.up = up; lane.down = down;
+    lane.h = up + down + LANE_PAD*2;
+  });
+
+  let top = 0;
+  LANES.forEach(lane=>{
+    lane.top = top;
+    lane.axis = top + LANE_PAD + lane.up;
+    top += lane.h;
+  });
+  worldH = top;
+
+  if(minX === Infinity){ minX = xOf(dayOf(TODAY)) - 300; maxX = minX + 600; }
+  bounds = { l:minX - 120, r:maxX + 120 };
+
+  /* bands, rules and axes */
+  world.querySelectorAll(".band,.band-line,.axis").forEach(n=>n.remove());
+  const frag = document.createDocumentFragment();
+  const w = (bounds.r - bounds.l) + 800;
+  LANES.forEach((lane,i)=>{
+    if(i % 2){
+      const band = document.createElement("div");
+      band.className = "band alt";
+      band.style.cssText = "left:"+(bounds.l-400)+"px;top:"+lane.top+"px;width:"+w+"px;height:"+lane.h+"px";
+      frag.appendChild(band);
+    }
+    if(i){
+      const rule = document.createElement("div");
+      rule.className = "band-line";
+      rule.style.cssText = "left:"+(bounds.l-400)+"px;top:"+lane.top+"px;width:"+w+"px";
+      frag.appendChild(rule);
+    }
+    const ax = document.createElement("div");
+    ax.className = "axis";
+    ax.setAttribute("data-c", lane.color);
+    ax.style.cssText = "left:"+(bounds.l-400)+"px;top:"+lane.axis+"px;width:"+w+"px";
+    frag.appendChild(ax);
+  });
+  world.insertBefore(frag, world.firstChild);
+
+  REC.forEach(r=>{
+    const lane = LANES[r.li];
+    const nodeY = lane.axis;
+    r.node.style.left = r.x + "px";
+    r.node.style.top  = nodeY + "px";
+    r.el.style.display = r.off ? "none" : "";
+    r.stem.style.display = r.off ? "none" : "";
+    if(r.off) return;
+    const cardTop = r.side === "t" ? (nodeY - r.d - r.h) : (nodeY + r.d);
+    r.el.style.left = (r.x - CARD_W/2) + "px";
+    r.el.style.top  = cardTop + "px";
+    r.stem.style.left = r.x + "px";
+    if(r.side === "t"){
+      r.stem.style.top = (nodeY - r.d) + "px";
+      r.stem.style.height = r.d + "px";
+    } else {
+      r.stem.style.top = nodeY + "px";
+      r.stem.style.height = r.d + "px";
+    }
+  });
+}
+
+function clampPan(){
+  const v = T.view, W = viewW(), H = viewH();
+  const minX = W - 80 - bounds.r, maxX = 190 - bounds.l;   // 190 clears the lane gutter
+  v.x = clamp(v.x, Math.min(minX, maxX), Math.max(minX, maxX));
+  v.y = worldH <= H ? 0 : clamp(v.y, H - worldH - 24, 0);
+}
+function repan(){
+  clampPan();
+  const v = T.view;
+  world.style.transform = "translate3d("+v.x+"px,"+v.y+"px,0)";
+  rw.style.transform    = "translate3d("+v.x+"px,0,0)";
+  gw.style.transform    = "translate3d(0,"+v.y+"px,0)";
+  paintRuler();
+}
+
+/* ---------------------------------------------------------------------
+   7. Ruler. Two rows: the coarse unit above, the fine one below.
+   --------------------------------------------------------------------- */
+function tickPlan(px){
+  if(px >= 30)   return { u:"d", n:1 };
+  if(px >= 15)   return { u:"d", n:2 };
+  if(px >= 5.5)  return { u:"d", n:7 };
+  if(px >= 2.4)  return { u:"d", n:14 };
+  if(px >= 1.0)  return { u:"m", n:1 };
+  if(px >= 0.42) return { u:"m", n:3 };
+  if(px >= 0.17) return { u:"m", n:6 };
+  if(px >= 0.075)return { u:"y", n:1 };
+  if(px >= 0.03) return { u:"y", n:2 };
+  if(px >= 0.013)return { u:"y", n:5 };
+  if(px >= 0.005)return { u:"y", n:10 };
+  return { u:"y", n:25 };
+}
+function paintRuler(){
+  const v = T.view, W = viewW();
+  const d0 = dayAt(-v.x - 40), d1 = dayAt(-v.x + W + 40);
+  const plan = tickPlan(v.px);
+  let html = "";
+  const tick = (day, cls, lab)=>{
+    html += '<div class="rk'+cls+'" style="left:'+xOf(day)+'px"><i class="stem"></i>'
+          + (lab ? '<span class="lab">'+lab+'</span>' : '') + '</div>';
+  };
+
+  if(plan.u === "d"){
+    const step = plan.n;
+    let d = Math.floor((d0 - EPOCH)/step)*step + EPOCH;
+    for(; d <= d1; d += step){
+      const o = fromDay(d);
+      tick(d, "", step >= 7 ? (o.d+" "+MON[o.m-1]) : String(o.d));
+    }
+    let a = fromDay(d0); a.d = 1;
+    for(let g=0; g<200; g++){
+      const day = dayOf(a);
+      if(day > d1) break;
+      if(day >= d0 - 40) tick(day, " maj", MON[a.m-1] + (a.m === 1 ? " " + a.y : ""));
+      a.m++; if(a.m > 12){ a.m = 1; a.y++; }
+    }
+  } else if(plan.u === "m"){
+    let a = fromDay(d0); a.d = 1; a.m = Math.floor((a.m-1)/plan.n)*plan.n + 1;
+    for(let g=0; g<400; g++){
+      const day = dayOf(a);
+      if(day > d1) break;
+      if(day >= d0 - 40) tick(day, a.m === 1 ? " maj" : "", a.m === 1 ? String(a.y) : MON[a.m-1]);
+      a.m += plan.n; while(a.m > 12){ a.m -= 12; a.y++; }
+    }
+  } else {
+    const majEvery = plan.n <= 2 ? 10 : (plan.n <= 5 ? 50 : 100);
+    let y = Math.floor(fromDay(d0).y/plan.n)*plan.n;
+    for(let g=0; g<400; g++){
+      const day = dayOf({ y:y, m:1, d:1 });
+      if(day > d1) break;
+      if(day >= d0 - 40) tick(day, (y % majEvery === 0) ? " maj" : "", String(y));
+      y += plan.n;
+    }
+  }
+  rw.innerHTML = html;
+  /* the major row only names a year when one starts on screen, so anchor
+     the left edge with the year you are actually looking at */
+  const ry = $("#rYear");
+  ry.textContent = plan.u === "y" ? "" : String(fromDay(d0 + 40/Math.max(v.px,PX_MIN)).y);
+}
+
+/* ---------------------------------------------------------------------
+   8. Gutter, list, empty states
+   --------------------------------------------------------------------- */
+function paintGutter(){
+  let h = "";
+  LANES.forEach((l,i)=>{
+    if(i) h += '<div class="lane-rule" style="top:'+l.top+'px"></div>';
+    h += '<div class="lane-h" data-c="'+l.color+'" style="top:'+(l.axis-11)+'px;height:22px">'
+       + '<span class="lane-tag">'+esc(l.name)+'</span>'
+       + '<span class="lane-n"'+(l.hid?' title="'+l.hid+' cards hidden at this zoom">+'+l.hid:'>'+l.n)+'</span></div>';
+  });
+  gw.innerHTML = h;
+  gw.style.height = Math.max(worldH, 1) + "px";
+}
+
+function paintList(vis, all){
+  const body = $("#dBody");
+  const undatedEv = all.filter(it=>it.src === "ev" && !it.date);
+  const rows = vis.filter(it=>it.date);
+
+  const sort = T.ui.sort;
+  rows.sort((a,b)=>{
+    if(sort === "title") return (a.title||"~").localeCompare(b.title||"~");
+    if(sort === "lane"){
+      const d = a.lane.localeCompare(b.lane);
+      if(d) return d;
+    }
+    return dayOf(a.date) - dayOf(b.date);
+  });
+
+  let h = "";
+  if(undatedEv.length){
+    h += '<div class="tray"><b>No date yet</b><span class="hint-i">'
+       + 'Triggered-only events. Give one a planning date to put it on the board &mdash; the mod file stays untouched.</span>'
+       + undatedEv.slice(0,40).map(it=>
+           '<button class="uchip" data-open="'+esc(it.key)+'"><span>'+esc(it.title||"Untitled")+'</span>'
+         + '<span class="mono" style="font-size:10px;opacity:.7">'+esc(it.evkey)+'</span></button>').join("")
+       + '</div>';
+  }
+  if(!rows.length){
+    h += '<div class="list-empty">Nothing matches. Clear the search or turn a filter back on.</div>';
+  } else {
+    h += rows.map(it=>
+      '<button class="row-i'+(it.key===selKey?' sel':'')+'" data-k="'+esc(it.key)+'" data-c="'+it.color+'">'
+      + '<span class="sw"></span>'
+      + '<span class="dt">'+esc(niceDate(it.date))+'</span>'
+      + '<span class="ln">'+esc(it.lane)+'</span>'
+      + '<span class="ti'+(it.title?'':' empty')+'">'+esc(it.title||"Untitled")+'</span>'
+      + '<span class="kx">'+esc(it.src === "ev" ? it.evkey : "note")+'</span>'
+      + '</button>').join("");
+  }
+  body.innerHTML = h;
+
+  body.querySelectorAll(".row-i").forEach(b=>{
+    b.onclick = ()=>{ select(b.dataset.k); focusOn(b.dataset.k); };
+    b.ondblclick = ()=>openEditor(b.dataset.k);
+  });
+  body.querySelectorAll("[data-open]").forEach(b=>{
+    b.onclick = ()=>openEditor(b.dataset.open);
+  });
+
+  const nEv = vis.filter(it=>it.src === "ev" && it.date).length;
+  const nNote = vis.filter(it=>it.src === "note" && it.date).length;
+  $("#dCount").textContent = nEv + " events, " + nNote + " notes"
+    + (undatedEv.length ? " (+" + undatedEv.length + " undated)" : "");
+
+  paintPickers(all);
+}
+
+function paintPickers(all){
+  const lanes = laneList(all), tags = allTags(all);
+  $("#pickLanes").innerHTML =
+    '<div class="pick-h"><b>Lanes</b><div class="spacer"></div>'
+    + '<button class="chip sm" data-act="all">All</button><button class="chip sm" data-act="none">None</button></div>'
+    + '<div class="pick-list">' + (lanes.length ? lanes.map(l=>
+        '<label class="pick-row"><input type="checkbox" data-lane="'+esc(l.name)+'"'
+        + (T.hiddenLanes.indexOf(l.name) === -1 ? " checked" : "") + '>'
+        + '<i class="sw" data-c="'+laneColor(l.name)+'" style="background:var(--c)"></i>'
+        + '<span class="n mono">'+esc(l.name)+'</span><span class="ct">'+l.n+'</span></label>'
+      ).join("") : '<div class="pick-empty">No lanes yet.</div>') + '</div>';
+
+  $("#pickTags").innerHTML =
+    '<div class="pick-h"><b>Tags</b><div class="spacer"></div>'
+    + '<button class="chip sm" data-act="all">All</button><button class="chip sm" data-act="none">None</button></div>'
+    + '<div class="pick-list">' + (tags.length ? tags.map(t=>
+        '<label class="pick-row"><input type="checkbox" data-tag="'+esc(t.name)+'"'
+        + (T.hiddenTags.indexOf(t.name) === -1 ? " checked" : "") + '>'
+        + '<span class="n">'+esc(t.name)+'</span><span class="ct">'+t.n+'</span></label>'
+      ).join("") : '<div class="pick-empty">No tags yet. Add them in the editor.</div>') + '</div>';
+
+  $("#btnLanes").classList.toggle("on", T.hiddenLanes.length > 0);
+  $("#btnTags").classList.toggle("on", T.hiddenTags.length > 0);
+
+  $("#pickLanes").querySelectorAll("[data-lane]").forEach(cb=>{
+    cb.onchange = ()=>{
+      const n = cb.dataset.lane, i = T.hiddenLanes.indexOf(n);
+      if(cb.checked && i !== -1) T.hiddenLanes.splice(i,1);
+      if(!cb.checked && i === -1) T.hiddenLanes.push(n);
+      saveT(); rebuild(); repan();
+    };
+  });
+  $("#pickTags").querySelectorAll("[data-tag]").forEach(cb=>{
+    cb.onchange = ()=>{
+      const n = cb.dataset.tag, i = T.hiddenTags.indexOf(n);
+      if(cb.checked && i !== -1) T.hiddenTags.splice(i,1);
+      if(!cb.checked && i === -1) T.hiddenTags.push(n);
+      saveT(); rebuild(); repan();
+    };
+  });
+  $("#pickLanes").querySelectorAll("[data-act]").forEach(b=>{
+    b.onclick = ()=>{
+      T.hiddenLanes = b.dataset.act === "all" ? [] : lanes.map(l=>l.name);
+      saveT(); rebuild(); repan();
+    };
+  });
+  $("#pickTags").querySelectorAll("[data-act]").forEach(b=>{
+    b.onclick = ()=>{
+      T.hiddenTags = b.dataset.act === "all" ? [] : tags.map(t=>t.name);
+      saveT(); rebuild(); repan();
+    };
+  });
+}
+
+function updateStageMsg(all, vis, dated){
+  const box = $("#stageMsg");
+  let msg = "";
+  if(!store.live){
+    msg = '<h2>Browser storage is switched off here</h2>'
+        + '<p>This preview cannot read the event maker or save your work. Save both files into the same folder '
+        + 'and open <span class="mono">planner.html</span> from disk &mdash; they will find each other.</p>';
+  } else if(!P && !T.items.length){
+    msg = '<h2>Nothing to plan yet</h2>'
+        + '<p>Write some events in the event maker and they appear here on their own, one lane per country tag. '
+        + 'Or start with a planning note: a story beat that lives only on this board.</p>'
+        + '<button class="btn primary" data-act="new">Add the first note</button>';
+  } else if(!all.length){
+    msg = '<h2>The event maker is empty</h2>'
+        + '<p>Write an event over there and it turns up here on its own. Or add a planning note '
+        + 'to sketch the story first.</p>'
+        + '<button class="btn primary" data-act="new">Add a note</button>';
+  } else if(!dated.length && vis.length){
+    msg = '<h2>No dates yet</h2>'
+        + '<p>Events set to <em>triggered only</em> have no date of their own. Give one a planning date from the '
+        + 'list below and it lands on the board without changing what the mod exports.</p>';
+  } else if(!dated.length){
+    msg = '<h2>Everything is filtered out</h2>'
+        + '<p>Clear the search box, or switch a lane or tag back on.</p>'
+        + '<button class="btn" data-act="clear">Clear filters</button>';
+  }
+  box.innerHTML = msg;
+  box.hidden = !msg;
+  const b = box.querySelector("[data-act]");
+  if(b) b.onclick = ()=>{
+    if(b.dataset.act === "new") addNote(modDate(TODAY), "GLOBAL");
+    else { query = ""; $("#q").value = ""; T.hiddenLanes = []; T.hiddenTags = []; saveT(); rebuild(); repan(); }
+  };
+}
+
+/* ---------------------------------------------------------------------
+   9. Selection and focus
+   --------------------------------------------------------------------- */
+function select(key){
+  selKey = key;
+  const r = REC.find(x=>x.it.key === key);
+  if(r && r.off){ layout(); }                       // give it its card back
+  selHighlight();
+  const lnk = $("#lnkEvents");
+  lnk.href = (key && key.indexOf("ev:") === 0) ? ("events.html#ev=" + key.slice(3)) : "events.html";
+}
+function selHighlight(){
+  world.querySelectorAll(".card.sel,.node.sel").forEach(n=>n.classList.remove("sel"));
+  $("#dBody").querySelectorAll(".row-i.sel").forEach(n=>n.classList.remove("sel"));
+  if(!selKey) return;
+  const q = '[data-k="'+selKey+'"]';
+  world.querySelectorAll(q).forEach(n=>n.classList.add("sel"));
+  const row = $("#dBody").querySelector(".row-i"+q);
+  if(row) row.classList.add("sel");
+}
+let tween = null;
+function focusOn(key){
+  const r = REC.find(x=>x.it.key === key);
+  if(!r) return;
+  const lane = LANES[r.li];
+  const tx = viewW()/2 - r.x;
+  const ty = clamp(viewH()/2 - lane.axis, -1e6, 0);
+  glide(tx, ty);
+}
+function glide(tx, ty){
+  if(tween) cancelAnimationFrame(tween);
+  const v = T.view, x0 = v.x, y0 = v.y, t0 = performance.now();
+  const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+  if(reduce){ v.x = tx; v.y = ty; repan(); return; }
+  const step = now=>{
+    const p = clamp((now - t0)/320, 0, 1);
+    const e = 1 - Math.pow(1-p, 3);
+    v.x = x0 + (tx-x0)*e; v.y = y0 + (ty-y0)*e;
+    repan();
+    if(p < 1) tween = requestAnimationFrame(step); else { tween = null; saveT(); }
+  };
+  tween = requestAnimationFrame(step);
+}
+function fitAll(){
+  if(!REC.length){ setPx(0.55); T.view.x = 60; T.view.y = 0; repan(); return; }
+  let lo = Infinity, hi = -Infinity;
+  REC.forEach(r=>{ const d = dayOf(r.it.date); if(d<lo) lo=d; if(d>hi) hi=d; });
+  const days = Math.max(hi - lo, 20);
+  setPx(clamp((viewW() - CARD_W - 80) / days, PX_MIN, PX_MAX), true);
+  T.view.x = viewW()/2 - (xOf(lo) + xOf(hi))/2;
+  T.view.y = 0;
+  layout(); repan(); saveT();
+}
+function setPx(px, skipLayout){
+  T.view.px = clamp(px, PX_MIN, PX_MAX);
+  $("#zoom").value = sliderFromPx(T.view.px);
+  $("#zLab").textContent = spanLabel();
+  if(!skipLayout) layout();
+}
+function zoomAt(screenX, factor){
+  const v = T.view;
+  const day = dayAt(screenX - v.x);
+  setPx(v.px * factor, true);
+  v.x = screenX - xOf(day);
+  layout(); repan();
+  $("#zLab").textContent = spanLabel();
+}
+
+/* ---------------------------------------------------------------------
+   10. Pointer work — pan the sheet, drag a node to reschedule
+   --------------------------------------------------------------------- */
+let drag = null;
+canvas.addEventListener("pointerdown", e=>{
+  if(e.button !== 0 && e.button !== 1) return;
+  const node = e.target.closest(".node");
+  const card = e.target.closest(".card");
+  if(node && e.button === 0){
+    const r = REC.find(x=>x.it.key === node.dataset.k);
+    if(!r) return;
+    drag = { kind:"node", r:r, x0:e.clientX, y0:e.clientY, sx:r.x, moved:false };
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    return;
+  }
+  if(card && e.button === 0) return;                 // cards handle their own clicks
+  drag = { kind:"pan", x0:e.clientX, y0:e.clientY, vx:T.view.x, vy:T.view.y, moved:false };
+  canvas.setPointerCapture(e.pointerId);
+  canvas.classList.add("drag");
+  e.preventDefault();
+});
+canvas.addEventListener("pointermove", e=>{
+  if(!drag){
+    const node = e.target.closest(".node");
+    if(node) showTip(node, e); else hideTip();
+    return;
+  }
+  const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+  if(!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+  drag.moved = true;
+  if(drag.kind === "pan"){
+    T.view.x = drag.vx + dx;
+    T.view.y = drag.vy + dy;
+    repan();
+  } else {
+    const r = drag.r;
+    const day = Math.round(dayAt(drag.sx + dx));
+    r.dragDay = day;
+    const x = xOf(day);
+    r.node.style.left = x + "px";
+    r.el.style.left = (x - CARD_W/2) + "px";
+    r.stem.style.left = x + "px";
+    showTipAt(e.clientX, e.clientY, "New date", niceDate(fromDay(day)) + "  \u00b7  " + modDate(fromDay(day)));
+  }
+});
+function endDrag(e){
+  if(!drag) return;
+  const d = drag; drag = null;
+  canvas.classList.remove("drag");
+  hideTip();
+  if(d.kind === "pan"){ saveT(); return; }
+  if(!d.moved || d.r.dragDay == null){ openEditor(d.r.it.key); return; }
+  const day = d.r.dragDay; d.r.dragDay = null;
+  setDate(d.r.it, modDate(fromDay(day)));
+  commit();
+}
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", endDrag);
+
+canvas.addEventListener("wheel", e=>{
+  e.preventDefault();
+  if(e.shiftKey || e.altKey){
+    T.view.y -= e.deltaY * (e.deltaMode === 1 ? 16 : 1);
+    repan(); saveSoon(); return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const raw = e.deltaY * (e.deltaMode === 1 ? 16 : 1);
+  zoomAt(e.clientX - rect.left, Math.exp(-clamp(raw, -240, 240) * 0.0022));
+  saveSoon();
+}, { passive:false });
+
+canvas.addEventListener("click", e=>{
+  const card = e.target.closest(".card");
+  if(card){ select(card.dataset.k); return; }
+  const node = e.target.closest(".node");
+  if(node){ select(node.dataset.k); return; }
+});
+canvas.addEventListener("dblclick", e=>{
+  const hit = e.target.closest(".card,.node");
+  if(hit){ openEditor(hit.dataset.k); return; }
+  if(!LANES.length){ addNote(modDate(TODAY), "GLOBAL"); return; }
+  const rect = canvas.getBoundingClientRect();
+  const wy = e.clientY - rect.top - T.view.y;
+  const wx = e.clientX - rect.left - T.view.x;
+  let lane = LANES[LANES.length-1];
+  for(let i=0;i<LANES.length;i++){ if(wy < LANES[i].top + LANES[i].h){ lane = LANES[i]; break; } }
+  addNote(modDate(fromDay(Math.round(dayAt(wx)))), lane.name);
+});
+canvas.addEventListener("keydown", e=>{
+  const node = e.target.closest && e.target.closest(".node");
+  if(node && (e.key === "Enter" || e.key === " ")){ e.preventDefault(); openEditor(node.dataset.k); }
+});
+
+/* ---- tooltip ---- */
+const tip = $("#tip");
+function showTip(node, e){
+  const r = REC.find(x=>x.it.key === node.dataset.k);
+  if(!r) return;
+  const it = r.it;
+  const when = niceDate(it.date) + (it.mode === "approximate" ? " (around)" : "")
+             + (it.planned ? " (planning date)" : "");
+  showTipAt(e.clientX, e.clientY, when, it.title || "Untitled");
+}
+function showTipAt(cx, cy, head, body){
+  tip.innerHTML = '<b>'+esc(head)+'</b>'+esc(body);
+  tip.hidden = false;
+  const rect = $("#stage").getBoundingClientRect();
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = clamp(cx - rect.left - w/2, 6, rect.width - w - 6) + "px";
+  tip.style.top  = clamp(cy - rect.top - h - 14, 6, rect.height - h - 6) + "px";
+}
+function hideTip(){ tip.hidden = true; }
+canvas.addEventListener("pointerleave", hideTip);
+
+/* ---------------------------------------------------------------------
+   11. Changing things
+   --------------------------------------------------------------------- */
+function setDate(it, dateStr){
+  if(it.src === "note"){ it.note.date = dateStr; return; }
+  const e = it.ev, t = e.timing;
+  if(t.mode === "precise" || t.mode === "approximate"){
+    t.date = dateStr;
+    if(t.mode === "approximate") syncApxTrigger(e);
+  } else {
+    metaOf(e.id).planDate = dateStr;
+  }
+}
+function commit(rebuildToo){
+  saveT(); saveP(); push();
+  if(rebuildToo !== false){ rebuild(); repan(); }
+}
+function addNote(date, lane){
+  const n = newNote(date, lane);
+  T.items.push(n);
+  saveT(); push(); rebuild(); repan();
+  select("note:"+n.id);
+  openEditor("note:"+n.id);
+}
+function findItem(key){
+  return derive(true).find(it=>it.key === key) || null;
+}
+
+/* ---------------------------------------------------------------------
+   12. Editor
+   --------------------------------------------------------------------- */
+let veil = null;
+function closeModal(){ if(veil){ veil.remove(); veil = null; } }
+function modal(html, wide){
+  closeModal();
+  veil = document.createElement("div");
+  veil.className = "veil";
+  veil.innerHTML = '<div class="modal"'+(wide?' style="width:640px"':'')+'>'+html+'</div>';
+  veil.addEventListener("mousedown", e=>{ if(e.target === veil) closeModal(); });
+  document.body.appendChild(veil);
+  return veil.querySelector(".modal");
+}
+
+function openEditor(key){
+  const it = findItem(key);
+  if(!it) return;
+  select(key);
+  const isEv = it.src === "ev";
+  const m = isEv ? metaOf(it.id) : null;
+  const dateLabel = (isEv && it.planned) ? "Planning date" : "Date";
+
+  let h = '<div class="modal-h"><h3>'+(isEv ? "Event" : "Planning note")+'</h3>'
+        + '<span class="badge" data-c="'+it.color+'">'+(isEv ? esc(it.evkey) : "planner only")+'</span>'
+        + '<div class="spacer"></div>'
+        + (isEv ? '<a class="back" href="events.html#ev='+esc(it.id)+'">Open in event maker</a>' : '')
+        + '</div><div class="modal-b">';
+
+  if(isEv){
+    h += '<div class="warn-bar" style="background:#eef2f7;border-color:#c6d3e2;color:var(--country)">'
+       + 'Title, description, date and tag belong to the mod. Changing them here changes the event itself. '
+       + 'Colour, tags and notes stay in the planner.</div>';
+  }
+
+  h += '<div class="field"><label>Title</label>'
+     + '<input type="text" id="fTitle" value="'+esc(it.title)+'" placeholder="Election night"></div>'
+     + '<div class="field"><label>Description</label>'
+     + '<textarea id="fDesc" rows="3" placeholder="What happens, in one or two lines.">'+esc(it.desc)+'</textarea></div>';
+
+  if(isEv){
+    h += '<div class="field"><label>How it fires</label><select id="fMode">'
+       + '<option value="triggered"'+(it.mode==="triggered"?" selected":"")+'>Triggered only &mdash; no date in the mod</option>'
+       + '<option value="precise"'+(it.mode==="precise"?" selected":"")+'>Precise date</option>'
+       + '<option value="approximate"'+(it.mode==="approximate"?" selected":"")+'>Approximate</option>'
+       + '</select><div class="hint" id="modeHint"></div></div>';
+  }
+
+  h += '<div class="row">'
+     + '<div class="field"><label>'+dateLabel+'</label>'
+     + '<input type="text" class="mono" id="fDate" value="'+esc(it.dateStr||"")+'" placeholder="2025.1.20"></div>'
+     + '<div class="field"><label>'+(isEv ? "Country tag" : "Lane")+'</label>'
+     + '<input type="text" class="mono" id="fLane" value="'+esc(it.lane)+'" placeholder="USA" style="text-transform:uppercase"></div>'
+     + '</div>'
+     + '<div class="hint" style="margin:-8px 0 13px">Dates take <span class="mono">2025.1.20</span> or <span class="mono">20 Jan 2025</span>. '
+     + (isEv ? 'The tag decides the lane and the on_actions driver &mdash; it does not rewrite your trigger box.' : 'Lanes are made as you use them.')
+     + '</div>';
+
+  h += '<div class="field"><label>Colour</label><div class="swatches" id="fColor">'
+     + COLORS.map(c=>'<button class="sw-b'+(it.color===c?" on":"")+'" data-c="'+c+'" data-col="'+c+'" title="'+COLOR_NAME[c]+'"></button>').join("")
+     + '</div></div>';
+
+  h += '<div class="field"><label>Tags</label>'
+     + '<input type="text" id="fTags" value="'+esc(it.tags.join(", "))+'" placeholder="politics, economy"></div>';
+
+  if(!isEv){
+    h += '<div class="field"><label>Picture</label>'
+       + '<div class="pic-row" id="picRow">'
+       + (it.image ? '<img class="pic-prev" src="'+esc(it.image)+'" alt="">' : '')
+       + '<div style="flex:1"><div class="drop" id="drop">Drop an image, paste it, or click to browse</div>'
+       + (it.image ? '<button class="btn sm danger" id="picClear" style="margin-top:7px">Remove picture</button>' : '')
+       + '</div></div></div>';
+    h += '<div class="field"><label>Links</label><div id="fLinks"></div>'
+       + '<button class="btn sm" id="addLink">+ Add link</button></div>';
+  }
+
+  h += '<div class="field"><label>Notes</label>'
+     + '<textarea id="fNotes" rows="3" placeholder="Working notes. Never exported.">'+esc(it.notes)+'</textarea></div>';
+
+  h += '</div><div class="modal-f">'
+     + '<button class="btn danger" id="fDel">'+(isEv ? "Delete event" : "Delete note")+'</button>'
+     + '<div class="spacer"></div>'
+     + '<button class="btn" id="fCancel">Cancel</button>'
+     + '<button class="btn primary" id="fSave">Save</button>'
+     + '</div>';
+
+  const box = modal(h);
+  const links = (it.links||[]).slice();
+
+  const modeHint = ()=>{
+    const el = box.querySelector("#modeHint");
+    if(!el) return;
+    const v = box.querySelector("#fMode").value;
+    el.textContent = v === "triggered"
+      ? "Nothing fires it automatically. The date below is a planning date and never leaves this page."
+      : v === "precise"
+        ? "Lands on the exact day through the daily on_actions driver."
+        : "Normal trigger plus mean time to happen, so it lands in the weeks after the date.";
+    const lab = box.querySelector("#fDate").closest(".field").querySelector("label");
+    lab.textContent = v === "triggered" ? "Planning date" : "Date";
+  };
+  if(box.querySelector("#fMode")){ modeHint(); box.querySelector("#fMode").onchange = modeHint; }
+
+  box.querySelectorAll("#fColor .sw-b").forEach(b=>{
+    b.onclick = ()=>{
+      box.querySelectorAll("#fColor .sw-b").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on");
+    };
+  });
+
+  const paintLinks = ()=>{
+    const wrap = box.querySelector("#fLinks");
+    if(!wrap) return;
+    wrap.innerHTML = links.map((l,i)=>
+      '<div class="link-row"><input type="text" data-li="'+i+'" data-f="label" value="'+esc(l.label||"")+'" placeholder="Label" style="max-width:150px">'
+      + '<input type="text" data-li="'+i+'" data-f="url" value="'+esc(l.url||"")+'" placeholder="https://">'
+      + '<button class="btn sm ghost" data-rm="'+i+'">&times;</button></div>').join("");
+    wrap.querySelectorAll("input").forEach(inp=>{
+      inp.oninput = ()=>{ links[+inp.dataset.li][inp.dataset.f] = inp.value; };
+    });
+    wrap.querySelectorAll("[data-rm]").forEach(b=>{
+      b.onclick = ()=>{ links.splice(+b.dataset.rm,1); paintLinks(); };
+    });
+  };
+  paintLinks();
+  if(box.querySelector("#addLink")){
+    box.querySelector("#addLink").onclick = ()=>{ links.push({label:"",url:""}); paintLinks(); };
+  }
+
+  /* picture, notes only */
+  let pic = it.image || null;
+  const drop = box.querySelector("#drop");
+  if(drop){
+    const take = file=>{
+      if(!file || !/^image\//.test(file.type)) return;
+      shrink(file, url=>{
+        pic = url;
+        const row = box.querySelector("#picRow");
+        const old = row.querySelector(".pic-prev");
+        if(old) old.src = url;
+        else { const img = document.createElement("img"); img.className = "pic-prev"; img.src = url; row.insertBefore(img, row.firstChild); }
+      });
+    };
+    drop.onclick = ()=>{
+      const f = $("#fileImg");
+      f.onchange = ev=>{ take(ev.target.files[0]); ev.target.value = ""; };
+      f.click();
+    };
+    drop.ondragover = e=>{ e.preventDefault(); drop.classList.add("over"); };
+    drop.ondragleave = ()=>drop.classList.remove("over");
+    drop.ondrop = e=>{ e.preventDefault(); drop.classList.remove("over"); take(e.dataTransfer.files[0]); };
+    box.addEventListener("paste", e=>{
+      const items = (e.clipboardData||{}).items || [];
+      for(let i=0;i<items.length;i++){ if(items[i].type.indexOf("image") === 0){ take(items[i].getAsFile()); break; } }
+    });
+    const clear = box.querySelector("#picClear");
+    if(clear) clear.onclick = ()=>{
+      pic = null;
+      const p = box.querySelector(".pic-prev"); if(p) p.remove();
+      clear.remove();
+    };
+  }
+
+  box.querySelector("#fCancel").onclick = closeModal;
+  box.querySelector("#fDel").onclick = ()=>{
+    if(isEv){
+      if(!confirm("Delete " + it.evkey + " from the event maker as well? This removes the event and everything in it.")) return;
+      const i = P.events.findIndex(e=>e.id === it.id);
+      if(i !== -1) P.events.splice(i,1);
+      delete T.meta[it.id];
+    } else {
+      const i = T.items.findIndex(n=>n.id === it.id);
+      if(i !== -1) T.items.splice(i,1);
+    }
+    selKey = null;
+    closeModal(); commit();
+    toast(isEv ? "Event deleted" : "Note deleted");
+  };
+  box.querySelector("#fSave").onclick = ()=>{
+    const title = box.querySelector("#fTitle").value.trim();
+    const desc  = box.querySelector("#fDesc").value;
+    const dRaw  = box.querySelector("#fDate").value.trim();
+    const lane  = (box.querySelector("#fLane").value.trim() || "GLOBAL").toUpperCase();
+    const color = (box.querySelector("#fColor .sw-b.on") || {}).dataset ? box.querySelector("#fColor .sw-b.on").dataset.col : it.color;
+    const tags  = box.querySelector("#fTags").value.split(",").map(s=>s.trim()).filter(Boolean);
+    const notes = box.querySelector("#fNotes").value;
+    const d = parseDate(dRaw);
+    if(dRaw && !d){ toast("That date does not parse. Try 2025.1.20"); return; }
+
+    if(isEv){
+      const e = it.ev;
+      const mode = box.querySelector("#fMode").value;
+      e.text = joinText(e.text, title, desc);
+      e.timing.mode = mode;
+      e.timing.tag = lane;
+      const mm = metaOf(e.id);
+      if(mode === "triggered"){
+        mm.planDate = d ? modDate(d) : "";
+      } else {
+        if(d) e.timing.date = modDate(d);
+        mm.planDate = "";
+        if(mode === "approximate") syncApxTrigger(e);
+      }
+      mm.lane = "";
+      mm.color = color === (e.type === "news" ? "red" : "navy") ? "" : color;
+      mm.tags = tags;
+      mm.notes = notes;
+    } else {
+      const n = it.note;
+      n.title = title; n.desc = desc;
+      if(d) n.date = modDate(d);
+      n.lane = lane; n.color = color; n.tags = tags; n.notes = notes;
+      n.image = pic; n.links = links.filter(l=>l.url);
+    }
+    closeModal(); commit();
+  };
+  const first = box.querySelector("#fTitle");
+  if(first) first.focus();
+}
+
+/* Pictures are stored inside the same small storage bucket, so they get
+   cut down to something a card can actually show. */
+function shrink(file, done){
+  const fr = new FileReader();
+  fr.onload = ()=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const max = 640;
+      const s = Math.min(1, max/img.width);
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width*s); c.height = Math.round(img.height*s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      let url;
+      try { url = c.toDataURL("image/jpeg", 0.82); } catch(e){ url = fr.result; }
+      done(url.length < String(fr.result).length ? url : fr.result);
+    };
+    img.onerror = ()=>done(fr.result);
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+
+/* ---------------------------------------------------------------------
+   13. History. Snapshots cover both this page and the event maker
+        project, so undo also takes back a date written into the mod.
+   --------------------------------------------------------------------- */
+const HIST = { list:[], i:-1 };
+function push(){
+  const s = JSON.stringify({ t:T, p:P });
+  if(HIST.list[HIST.i] === s) return;
+  HIST.list = HIST.list.slice(0, HIST.i+1);
+  HIST.list.push(s);
+  if(HIST.list.length > 60) HIST.list.shift();
+  HIST.i = HIST.list.length - 1;
+}
+function step(dir){
+  const j = HIST.i + dir;
+  if(j < 0 || j >= HIST.list.length) return;
+  HIST.i = j;
+  const keep = Object.assign({}, T.view);
+  const s = JSON.parse(HIST.list[j]);
+  T = s.t; P = s.p;
+  T.view = keep;                                  // undo history, not the camera
+  saveT(); saveP();
+  rebuild(); repan();
+  toast(dir < 0 ? "Undone" : "Redone");
+}
+
+/* ---------------------------------------------------------------------
+   14. In and out
+   --------------------------------------------------------------------- */
+function download(name, text, mime){
+  const b = new Blob([text], { type:mime || "text/plain" });
+  const u = URL.createObjectURL(b);
+  const a = document.createElement("a");
+  a.href = u; a.download = name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(u), 4000);
+}
+function exportJSON(){
+  tidyMeta();
+  const out = {
+    kind:"american-dream-story-planner", v:1,
+    exported:modDate(TODAY),
+    items:T.items, meta:T.meta, laneOrder:T.laneOrder
+  };
+  download("story-planner.json", JSON.stringify(out, null, 2), "application/json");
+  toast("Exported story-planner.json");
+}
+function importJSON(file){
+  const fr = new FileReader();
+  fr.onload = ()=>{
+    let d;
+    try { d = JSON.parse(fr.result); } catch(e){ toast("That file is not JSON."); return; }
+    if(d && Array.isArray(d.events) && !Array.isArray(d.items)){
+      toast("That is an event maker project \u2014 open it with the event maker's Open project button.");
+      return;
+    }
+    if(!d || !Array.isArray(d.items)){ toast("That file is not a story planner export."); return; }
+    const items = (d.items||[]).map(normNote);
+    const merge = T.items.length
+      ? confirm("Keep the " + T.items.length + " notes already here and add the " + items.length + " from the file?\n\nCancel replaces them instead.")
+      : true;
+    T.items = merge ? T.items.concat(items.filter(n=>!T.items.some(o=>o.id === n.id))) : items;
+    if(d.meta && typeof d.meta === "object") T.meta = Object.assign(merge ? T.meta : {}, d.meta);
+    if(Array.isArray(d.laneOrder)) T.laneOrder = d.laneOrder;
+    commit();
+    toast("Imported " + items.length + " notes");
+  };
+  fr.readAsText(file);
+}
+function outline(){
+  const rows = derive().filter(it=>it.date).sort((a,b)=>dayOf(a.date) - dayOf(b.date));
+  if(!rows.length) return "";
+  let out = "# Story timeline \u2014 The American Dream\n", year = null;
+  rows.forEach(it=>{
+    if(it.date.y !== year){ year = it.date.y; out += "\n## " + year + "\n\n"; }
+    out += "- **" + (niceDate(it.date)) + "** \u2014 `" + it.lane + "` "
+         + (it.title || "Untitled")
+         + (it.src === "ev" ? "  `" + it.evkey + "`" : "  _(note)_")
+         + (it.mode === "approximate" ? " _(approximate)_" : "")
+         + (it.planned ? " _(planning date)_" : "")
+         + "\n";
+    if(it.desc) out += "  " + it.desc.replace(/\n+/g, " ").slice(0,220) + "\n";
+  });
+  return out;
+}
+function copyOutline(){
+  const text = outline();
+  if(!text){ toast("Nothing on the board to copy yet."); return; }
+  const fall = ()=>{
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch(e){}
+    ta.remove();
+    if(ok) toast("Outline copied as Markdown");
+    else download("story-outline.md", text, "text/markdown");
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>toast("Outline copied as Markdown"), fall);
+  } else fall();
+}
+
+/* ---------------------------------------------------------------------
+   15. Toast
+   --------------------------------------------------------------------- */
+let toastEl = null, toastTimer = null;
+function toast(msg){
+  if(toastEl) toastEl.remove();
+  toastEl = document.createElement("div");
+  toastEl.className = "toast";
+  toastEl.textContent = msg;
+  document.body.appendChild(toastEl);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ if(toastEl){ toastEl.remove(); toastEl = null; } }, 3200);
+}
+
+/* ---------------------------------------------------------------------
+   16. Wiring
+   --------------------------------------------------------------------- */
+$("#btnNew").onclick = ()=>{
+  const day = Math.round(dayAt(viewW()/2 - T.view.x));
+  const lane = LANES.length ? LANES[0].name : ((P && P.settings && P.settings.defaultTag) || "USA").toUpperCase();
+  addNote(modDate(fromDay(day)), lane);
+};
+$("#btnExport").onclick = exportJSON;
+$("#btnImport").onclick = ()=>$("#fileJson").click();
+$("#fileJson").onchange = e=>{ const f = e.target.files[0]; if(f) importJSON(f); e.target.value = ""; };
+$("#btnOutline").onclick = copyOutline;
+$("#btnFit").onclick = fitAll;
+$("#zoom").oninput = e=>{
+  const mid = viewW()/2;
+  const day = dayAt(mid - T.view.x);
+  setPx(pxFromSlider(+e.target.value), true);
+  T.view.x = mid - xOf(day);
+  layout(); repan(); saveT();
+};
+$("#zIn").onclick  = ()=>{ zoomAt(viewW()/2, 1.5); saveT(); };
+$("#zOut").onclick = ()=>{ zoomAt(viewW()/2, 1/1.5); saveT(); };
+
+$("#q").oninput = e=>{ query = e.target.value.trim(); rebuild(); repan(); };
+$("#srcEv").onchange = e=>{ T.ui.srcEv = e.target.checked; saveT(); rebuild(); repan(); };
+$("#srcNote").onchange = e=>{ T.ui.srcNote = e.target.checked; saveT(); rebuild(); repan(); };
+$("#sort").onchange = e=>{ T.ui.sort = e.target.value; saveT(); rebuild(); };
+
+$("#dToggle").onclick = ()=>{
+  T.ui.drawer = !T.ui.drawer;
+  $("#drawer").classList.toggle("shut", !T.ui.drawer);
+  saveT(); requestAnimationFrame(()=>{ layout(); repan(); });
+};
+
+function togglePick(btn, pane){
+  const open = pane.hidden;
+  document.querySelectorAll(".pick").forEach(p=>{ p.hidden = true; });
+  pane.hidden = !open;
+}
+$("#btnLanes").onclick = e=>{ e.stopPropagation(); togglePick(e.target, $("#pickLanes")); };
+$("#btnTags").onclick  = e=>{ e.stopPropagation(); togglePick(e.target, $("#pickTags")); };
+document.addEventListener("mousedown", e=>{
+  if(!e.target.closest(".pick-wrap")) document.querySelectorAll(".pick").forEach(p=>{ p.hidden = true; });
+});
+
+$("#btnHelp").onclick = ()=>{
+  modal('<div class="modal-h"><h3>Shortcuts and gestures</h3></div><div class="modal-b">'
+    + '<div class="keys">'
+    + '<span class="kbd">Wheel</span><div>Zoom, centred on the pointer</div>'
+    + '<span class="kbd">Shift + wheel</span><div>Scroll the lanes</div>'
+    + '<span class="kbd">Drag</span><div>Pan. Drag a node sideways to move its date</div>'
+    + '<span class="kbd">Double click</span><div>On a card, edit it. On empty space, add a note there</div>'
+    + '<span class="kbd">N</span><div>New note in the middle of the view</div>'
+    + '<span class="kbd">F</span><div>Fit everything on screen</div>'
+    + '<span class="kbd">Delete</span><div>Delete whatever is selected</div>'
+    + '<span class="kbd">Ctrl F</span><div>Search</div>'
+    + '<span class="kbd">Ctrl S</span><div>Export the plan</div>'
+    + '<span class="kbd">Ctrl O</span><div>Import a plan</div>'
+    + '<span class="kbd">Ctrl Z</span><div>Undo, including dates written into the mod</div>'
+    + '<span class="kbd">Ctrl Y</span><div>Redo</div>'
+    + '</div>'
+    + '<div class="hint" style="margin-top:16px">Filled dots are precise dates, ringed dots are approximate, '
+    + 'diamonds are notes that live only here. Undated triggered-only events wait in the strip below the board.</div>'
+    + '</div><div class="modal-f"><div class="spacer"></div><button class="btn primary" id="ok">Close</button></div>')
+    .querySelector("#ok").onclick = closeModal;
+};
+
+document.addEventListener("keydown", e=>{
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if(e.key === "Escape"){ if(veil) closeModal(); else { document.querySelectorAll(".pick").forEach(p=>{p.hidden=true;}); } return; }
+  if(e.metaKey || e.ctrlKey){
+    const k = String(e.key||"").toLowerCase();
+    if(k === "s"){ e.preventDefault(); exportJSON(); }
+    else if(k === "o"){ e.preventDefault(); $("#fileJson").click(); }
+    else if(k === "f"){ e.preventDefault(); $("#q").focus(); $("#q").select(); }
+    else if(k === "z" && !e.shiftKey){ e.preventDefault(); step(-1); }
+    else if((k === "z" && e.shiftKey) || k === "y"){ e.preventDefault(); step(1); }
+    return;
+  }
+  if(typing || veil) return;
+  if(e.key === "n" || e.key === "N"){ e.preventDefault(); $("#btnNew").click(); }
+  else if(e.key === "f" || e.key === "F"){ e.preventDefault(); fitAll(); }
+  else if(e.key === "Delete"){
+    if(!selKey) return;
+    e.preventDefault();
+    const it = findItem(selKey);
+    if(!it) return;
+    if(it.src === "note"){
+      const i = T.items.findIndex(n=>n.id === it.id);
+      if(i !== -1 && confirm("Delete the note \u201c" + (it.title||"Untitled") + "\u201d?")){
+        T.items.splice(i,1); selKey = null; commit(); toast("Note deleted");
+      }
+    } else toast("Open the event to delete it \u2014 that also removes it from the mod.");
+  }
+  else if(e.key === "+" || e.key === "="){ zoomAt(viewW()/2, 1.4); saveT(); }
+  else if(e.key === "-" || e.key === "_"){ zoomAt(viewW()/2, 1/1.4); saveT(); }
+  else if(e.key === "ArrowLeft"){ T.view.x += 90; repan(); }
+  else if(e.key === "ArrowRight"){ T.view.x -= 90; repan(); }
+  else if(e.key === "ArrowUp"){ T.view.y += 60; repan(); }
+  else if(e.key === "ArrowDown"){ T.view.y -= 60; repan(); }
+});
+
+let rsz = null;
+addEventListener("resize", ()=>{
+  clearTimeout(rsz);
+  rsz = setTimeout(()=>{ layout(); repan(); $("#zLab").textContent = spanLabel(); }, 120);
+});
+
+/* The event maker autosaves into the same bucket. When it changes in
+   another tab, pick it up rather than sit on a stale copy. */
+addEventListener("storage", e=>{
+  if(e.key !== EKEY) return;
+  const fresh = loadP();
+  if(!fresh) return;
+  P = fresh;
+  rebuild(); repan();
+  toast("Reloaded events from the event maker");
+});
+
+/* ---------------------------------------------------------------------
+   17. Boot
+   --------------------------------------------------------------------- */
+const firstRun = store.get(TKEY) == null && store.get(TKEY_OLD) == null;
+T = loadT();
+P = loadP();
+
+$("#q").value = "";
+$("#srcEv").checked = T.ui.srcEv !== false;
+$("#srcNote").checked = T.ui.srcNote !== false;
+$("#sort").value = T.ui.sort || "date";
+$("#drawer").classList.toggle("shut", T.ui.drawer === false);
+setPx(T.view.px, true);
+
+rebuild();
+if(firstRun) fitAll(); else repan();
+
+const hash = /[#&]ev=([A-Za-z0-9_-]+)/.exec(location.hash || "");
+if(hash){
+  const key = "ev:" + hash[1];
+  if(REC.some(r=>r.it.key === key)){ select(key); focusOn(key); }
+  else {
+    const it = derive().find(x=>x.key === key);
+    if(it) openEditor(key);
+  }
+}
+push();
+</script>
+</body>
+</html>

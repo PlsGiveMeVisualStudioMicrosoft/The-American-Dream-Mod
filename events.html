@@ -297,6 +297,7 @@ textarea{resize:vertical; font-family:var(--font-mono); font-size:12.5px; line-h
 
   <div class="topbar">
     <a class="back" href="index.html" title="Back to the mod roadmap">&larr;<span>Roadmap</span></a>
+    <a class="back" id="lnkTime" href="planner.html" title="See these events on the story planner">Planner&nbsp;&rarr;</a>
     <div class="brand">Event Maker <span>&middot; The American Dream</span></div>
     <div class="ns-wrap">
       <label for="ns">Namespace</label>
@@ -734,6 +735,8 @@ function renderList(){
   $("#sideFoot").textContent = P.events.length
     ? (c+" country, "+n+" news")
     : (store.live ? "Autosave on" : "Autosave off in preview");
+  const tl = $("#lnkTime");
+  if(tl) tl.href = selId ? ("planner.html#ev=" + selId) : "planner.html";
 }
 
 /* =====================================================================
@@ -2244,7 +2247,11 @@ function openSettings(){
 P = restore();
 if(!P.events.length){ /* start empty; the empty state explains itself */ }
 selId = P.events.length ? P.events[0].id : null;
-if(selId) P.events[0].options.forEach(o=>openOpts[o.id]=true);
+/* planner.html links back as events.html#ev=<id> */
+const deepEv = /[#&]ev=([A-Za-z0-9_-]+)/.exec(location.hash || "");
+if(deepEv && P.events.some(e=>e.id === deepEv[1])) selId = deepEv[1];
+const deepSel = P.events.find(e=>e.id === selId);
+if(deepSel) deepSel.options.forEach(o=>openOpts[o.id]=true);
 
 $("#ns").value = P.ns;
 $("#ns").oninput = ev=>{ P.ns = ev.target.value; touch(true); updatePreviewSafe(); };
@@ -2289,6 +2296,30 @@ document.addEventListener("keydown", ev=>{
   if(k === "s"){ ev.preventDefault(); $("#btnSave").click(); }
   else if(k === "z" && !ev.shiftKey){ ev.preventDefault(); undo(); }
   else if((k === "z" && ev.shiftKey) || k === "y"){ ev.preventDefault(); redo(); }
+});
+
+/* The story planner edits the same autosave. Pick its changes up when
+   this tab is in the background; if someone is here and typing, say so
+   instead of pulling the page out from under them. */
+addEventListener("storage", ev=>{
+  if(ev.key !== KEY || !ev.newValue) return;
+  let p = null;
+  try { p = JSON.parse(ev.newValue); } catch(e){ return; }
+  if(!p || !Array.isArray(p.events)) return;
+  if(JSON.stringify(p) === JSON.stringify(P)) return;
+  if(document.hasFocus()){
+    toast("The story planner changed these events \u2014 reload to see it.");
+    return;
+  }
+  p.settings = Object.assign({}, DEF_SETTINGS, p.settings||{});
+  p.events.forEach(e=>{
+    e.timing = Object.assign({ mode:"triggered", tag:"USA", date:"2025.1.20", hours:23, trigger:"", mtthMonths:0, mtthDays:1 }, e.timing||{});
+    e.options = (e.options||[]).map(o=>Object.assign(newOption(), o));
+  });
+  P = p;
+  if(!P.events.some(e=>e.id === selId)) selId = P.events.length ? P.events[0].id : null;
+  $("#ns").value = P.ns || "my_events";
+  renderList(); renderMain(); refreshCheckBadge(); commit();
 });
 
 renderList();
