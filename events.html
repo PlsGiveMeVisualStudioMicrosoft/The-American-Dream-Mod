@@ -83,10 +83,14 @@ button{cursor:pointer}
 .ev-item.sel{background:var(--sunk); border-color:var(--line2)}
 .ev-dot{width:3px; align-self:stretch; border-radius:2px; flex:none; background:var(--country)}
 .ev-item[data-t="news"] .ev-dot{background:var(--news)}
-.ev-main{min-width:0; flex:1}
-.ev-title{font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ev-main{min-width:0; flex:1; display:flex; flex-direction:column}
+.ev-title{
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2;
+  font-size:13px; font-weight:600; line-height:1.32;
+  overflow:hidden; overflow-wrap:anywhere;
+}
 .ev-title.empty{color:var(--ink3); font-weight:400; font-style:italic}
-.ev-meta{font-family:var(--font-mono); font-size:10.5px; color:var(--ink3); margin-top:1px;
+.ev-meta{display:block; font-family:var(--font-mono); font-size:10.5px; color:var(--ink3); margin-top:2px;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .side-foot{padding:9px 12px; border-top:1px solid var(--line); font-size:11.5px; color:var(--ink3)}
 
