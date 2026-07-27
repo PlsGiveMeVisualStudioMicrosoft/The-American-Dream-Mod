@@ -986,7 +986,12 @@ function layout(){
   worldH = top;
 
   if(minX === Infinity){ minX = xOf(dayOf(TODAY)) - 300; maxX = minX + 600; }
-  bounds = { l:minX - 120, r:maxX + 120 };
+  /* Keep at least ~30 days of blank timeline scrollable past the outermost
+     card. A flat pixel pad shrinks to almost nothing once zoomed in (days
+     are wide on screen), which made panning feel like it hit a wall right
+     at the edge of the data. */
+  const edgePad = Math.max(120, 30 * T.view.px);
+  bounds = { l:minX - edgePad, r:maxX + edgePad };
 
   /* bands, rules and axes */
   world.querySelectorAll(".band,.band-line,.axis").forEach(n=>n.remove());

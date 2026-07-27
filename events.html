@@ -1604,6 +1604,19 @@ function dateValid(d){
   const p = parseDate(d);
   return !!p && p.da <= MONTH_DAYS[p.mo-1];
 }
+/* the calendar day before d, wrapping month/year on the same 365-day calendar */
+function prevDay(d){
+  const p = parseDate(d);
+  if(!p) return d;
+  let { y, mo, da } = p;
+  da--;
+  if(da < 1){
+    mo--;
+    if(mo < 1){ mo = 12; y--; }
+    da = MONTH_DAYS[mo-1];
+  }
+  return y + "." + mo + "." + da;
+}
 function dayOfYear(mo, da){         // 0-indexed within the year
   let n = 0;
   for(let i=0;i<mo-1;i++) n += MONTH_DAYS[i];
