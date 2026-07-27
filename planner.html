@@ -986,11 +986,13 @@ function layout(){
   worldH = top;
 
   if(minX === Infinity){ minX = xOf(dayOf(TODAY)) - 300; maxX = minX + 600; }
-  /* Keep at least ~30 days of blank timeline scrollable past the outermost
-     card. A flat pixel pad shrinks to almost nothing once zoomed in (days
-     are wide on screen), which made panning feel like it hit a wall right
-     at the edge of the data. */
-  const edgePad = Math.max(120, 30 * T.view.px);
+  /* Keep several years of blank timeline scrollable past the outermost
+     card in either direction, so you can pan out to plan future or past
+     beats before any event exists there yet. A flat pixel pad does not
+     work for this: it shrinks to almost nothing once zoomed in (days are
+     wide on screen), which made panning feel like it hit a wall right at
+     the edge of the data. */
+  const edgePad = Math.max(300, 365 * 3 * T.view.px);
   bounds = { l:minX - edgePad, r:maxX + edgePad };
 
   /* bands, rules and axes */
@@ -1040,14 +1042,32 @@ function layout(){
   });
 }
 
-function clampPan(){
+/* Rubber-band: past `over` pixels beyond a bound, keep giving ground but
+   ever more slowly, so a hard drag never travels more than ~K px past the
+   wall instead of just stopping dead. */
+const RUBBER_K = 140;
+function rubber(over){ return RUBBER_K * (1 - 1/(1 + over/RUBBER_K)); }
+
+function clampPan(soft){
+  if(soft === "skip") return;                     // caller is mid-tween and already knows the target is valid
   const v = T.view, W = viewW(), H = viewH();
   const minX = W - 80 - bounds.r, maxX = 190 - bounds.l;   // 190 clears the lane gutter
-  v.x = clamp(v.x, Math.min(minX, maxX), Math.max(minX, maxX));
-  v.y = worldH <= H ? 0 : clamp(v.y, H - worldH - 24, 0);
+  const loX = Math.min(minX, maxX), hiX = Math.max(minX, maxX);
+  const loY = worldH <= H ? 0 : H - worldH - 24, hiY = 0;
+  if(soft){
+    if(v.x < loX) v.x = loX - rubber(loX - v.x);
+    else if(v.x > hiX) v.x = hiX + rubber(v.x - hiX);
+    if(worldH > H){
+      if(v.y < loY) v.y = loY - rubber(loY - v.y);
+      else if(v.y > hiY) v.y = hiY + rubber(v.y - hiY);
+    } else v.y = 0;
+  } else {
+    v.x = clamp(v.x, loX, hiX);
+    v.y = worldH <= H ? 0 : clamp(v.y, loY, hiY);
+  }
 }
-function repan(){
-  clampPan();
+function repan(soft){
+  clampPan(soft);
   const v = T.view;
   world.style.transform = "translate3d("+v.x+"px,"+v.y+"px,0)";
   rw.style.transform    = "translate3d("+v.x+"px,0,0)";
@@ -1310,7 +1330,11 @@ function focusOn(key){
   const ty = clamp(viewH()/2 - lane.axis, -1e6, 0);
   glide(tx, ty);
 }
-function glide(tx, ty){
+/* noClamp: the caller already knows tx/ty sit inside bounds (a rubber-band
+   snap-back, say) - re-clamping every frame would just yank the view straight
+   to the wall instead of letting it ease back, since every point on the way
+   from an overshot start is still technically out of bounds. */
+function glide(tx, ty, noClamp){
   if(tween) cancelAnimationFrame(tween);
   const v = T.view, x0 = v.x, y0 = v.y, t0 = performance.now();
   const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
@@ -1319,7 +1343,7 @@ function glide(tx, ty){
     const p = clamp((now - t0)/320, 0, 1);
     const e = 1 - Math.pow(1-p, 3);
     v.x = x0 + (tx-x0)*e; v.y = y0 + (ty-y0)*e;
-    repan();
+    repan(noClamp ? "skip" : undefined);
     if(p < 1) tween = requestAnimationFrame(step); else { tween = null; saveT(); }
   };
   tween = requestAnimationFrame(step);
@@ -1383,7 +1407,7 @@ canvas.addEventListener("pointermove", e=>{
   if(drag.kind === "pan"){
     T.view.x = drag.vx + dx;
     T.view.y = drag.vy + dy;
-    repan();
+    repan(true);
   } else {
     const r = drag.r;
     const day = Math.round(dayAt(drag.sx + dx));
@@ -1400,7 +1424,13 @@ function endDrag(e){
   const d = drag; drag = null;
   canvas.classList.remove("drag");
   hideTip();
-  if(d.kind === "pan"){ saveT(); return; }
+  if(d.kind === "pan"){
+    const v = T.view, x0 = v.x, y0 = v.y;
+    clampPan(false);
+    if(v.x !== x0 || v.y !== y0){ const tx = v.x, ty = v.y; v.x = x0; v.y = y0; glide(tx, ty, true); }
+    else saveT();
+    return;
+  }
   if(!d.moved || d.r.dragDay == null){ openEditor(d.r.it.key); return; }
   const day = d.r.dragDay; d.r.dragDay = null;
   setDate(d.r.it, modDate(fromDay(day)));
@@ -2571,7 +2601,7 @@ tCv.addEventListener("pointermove", e=>{
     tDrag.moved = true;
     hideTrackTip();
     T.view.x = tDrag.vx + dx;
-    repan();
+    repan(true);
     return;
   }
   const mx = e.clientX - r.left, my = e.clientY - r.top;
@@ -2618,7 +2648,13 @@ function endTrackDrag(e){
   if(!tDrag) return;
   const d = tDrag; tDrag = null;
   if(d.curve){ saveT(); push(); hideTrackTip(); return; }
-  if(d.moved){ saveT(); return; }
+  if(d.moved){
+    const v = T.view, x0 = v.x, y0 = v.y;
+    clampPan(false);
+    if(v.x !== x0 || v.y !== y0){ const tx = v.x, ty = v.y; v.x = x0; v.y = y0; glide(tx, ty, true); }
+    else saveT();
+    return;
+  }
   const r = tCv.getBoundingClientRect();
   const hit = hitTrack(e.clientX - r.left, e.clientY - r.top);
   if(!hit) return;
