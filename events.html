@@ -83,14 +83,10 @@ button{cursor:pointer}
 .ev-item.sel{background:var(--sunk); border-color:var(--line2)}
 .ev-dot{width:3px; align-self:stretch; border-radius:2px; flex:none; background:var(--country)}
 .ev-item[data-t="news"] .ev-dot{background:var(--news)}
-.ev-main{min-width:0; flex:1; display:flex; flex-direction:column}
-.ev-title{
-  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2;
-  font-size:13px; font-weight:600; line-height:1.32;
-  overflow:hidden; overflow-wrap:anywhere;
-}
+.ev-main{min-width:0; flex:1}
+.ev-title{font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .ev-title.empty{color:var(--ink3); font-weight:400; font-style:italic}
-.ev-meta{display:block; font-family:var(--font-mono); font-size:10.5px; color:var(--ink3); margin-top:2px;
+.ev-meta{font-family:var(--font-mono); font-size:10.5px; color:var(--ink3); margin-top:1px;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .side-foot{padding:9px 12px; border-top:1px solid var(--line); font-size:11.5px; color:var(--ink3)}
 
@@ -301,7 +297,6 @@ textarea{resize:vertical; font-family:var(--font-mono); font-size:12.5px; line-h
 
   <div class="topbar">
     <a class="back" href="index.html" title="Back to the mod roadmap">&larr;<span>Roadmap</span></a>
-    <a class="back" id="lnkTime" href="planner.html" title="See these events on the story planner">Planner&nbsp;&rarr;</a>
     <div class="brand">Event Maker <span>&middot; The American Dream</span></div>
     <div class="ns-wrap">
       <label for="ns">Namespace</label>
@@ -609,13 +604,17 @@ const DEF_SETTINGS = {
   countryW:210, countryH:176,
   newsW:397,  newsH:153,
   countryBase:1, newsBase:100,
-  defaultTag:"USA"
+  defaultTag:"USA", startDate:"2025.1.1"
 };
 
 function newOption(){
   return { id:uid(), name:"", trigger:"", effects:"", ttKey:"", ttText:"", mods:null,
            vars:{ aprOn:false, apr:5, chaosOn:false, chaos:5 } };
 }
+
+/* fields every timing object should have, whatever it was loaded as */
+const TIMING_DEFAULTS = { mode:"approximate", tag:"USA", date:"2025.1.20",
+  hours:23, trigger:"", conds:"", mtthMonths:0, mtthDays:1 };
 
 function newEvent(type){
   const tag = (P && P.settings && P.settings.defaultTag) ? P.settings.defaultTag.toUpperCase() : "USA";
@@ -663,7 +662,7 @@ function restore(){
       if(p && Array.isArray(p.events)){
         p.settings = Object.assign({}, DEF_SETTINGS, p.settings||{});
         p.events.forEach(ev=>{
-          ev.timing = Object.assign({ mode:"triggered", tag:"USA", date:"2025.1.20", hours:23, trigger:"", mtthMonths:0, mtthDays:1 }, ev.timing||{});
+          ev.timing = Object.assign({}, TIMING_DEFAULTS, ev.timing||{});
           ev.options = (ev.options||[]).map(o=>Object.assign(newOption(), o));
         });
         return p;
@@ -739,8 +738,6 @@ function renderList(){
   $("#sideFoot").textContent = P.events.length
     ? (c+" country, "+n+" news")
     : (store.live ? "Autosave on" : "Autosave off in preview");
-  const tl = $("#lnkTime");
-  if(tl) tl.href = selId ? ("planner.html#ev=" + selId) : "planner.html";
 }
 
 /* =====================================================================
@@ -870,12 +867,17 @@ function timingBlock(e){
 
   let extra = "";
   if(t.mode === "precise"){
+    const d = startupDelay(t.date);
+    const ok = dateValid(t.date);
+    const dlabel = !ok ? "the date is not a real day" : (d==null ? "—" : (d<0 ? d + " days (before the start date)" : (d===0 ? "0 days (fires at game start)" : d + " days after " + (P.settings.startDate||"2025.1.1"))));
     extra = '<div class="row">'
       + '<div class="field" style="margin:0"><label>Country tag</label><input type="text" class="mono" id="tTag" value="'+esc(t.tag)+'" placeholder="USA" maxlength="3" style="text-transform:uppercase"></div>'
-      + '<div class="field" style="margin:0"><label>Date</label><input type="text" class="mono" id="tDate" value="'+esc(t.date)+'" placeholder="2025.1.20"></div>'
-      + '<div class="field" style="margin:0"><label>Hour</label><input type="number" id="tHours" value="'+(t.hours)+'" min="0" max="23"></div>'
+      + '<div class="field" style="margin:0;flex:1.4"><label>Date</label><input type="text" class="mono" id="tDate" value="'+esc(t.date)+'" placeholder="2025.1.20"></div>'
       + '</div>'
-      + '<div class="hint">Exports an <span class="mono">on_daily_'+esc((t.tag||"TAG").toUpperCase())+'</span> block that checks <span class="mono">date &gt; '+esc(prevDay(t.date))+'</span>, sets a guard flag, then fires the event with <span class="mono">hours = '+(t.hours)+'</span>. The event itself carries <span class="mono">is_triggered_only = yes</span> and no trigger.</div>';
+      + '<div class="hint">Scheduled once at game start with a delay of <b>'+esc(dlabel)+'</b>, so nothing is checked every day. Counted on the game\'s 365-day calendar &mdash; no leap day.</div>'
+      + '<div class="field" style="margin-top:13px"><label>Extra conditions <span style=\'font-weight:400;color:var(--ink3)\'>(optional)</span></label>'
+      + '<textarea id="tConds" rows="3" placeholder="NOT = { has_country_flag = coup_happened }">'+esc(t.conds||"")+'</textarea>'
+      + '<div class="hint">Goes in the event\'s own <span class="mono">trigger = { }</span> and is checked when the delay elapses. If it fails on that day the event is skipped &mdash; it does not wait and retry. Leave empty for an unconditional date.</div></div>';
   } else if(t.mode === "approximate"){
     extra = '<div class="row"><div class="field" style="margin:0"><label>Land around</label>'
       + '<input type="text" class="mono" id="tADate" value="'+esc(t.date)+'" placeholder="2025.6.1"></div>'
@@ -892,7 +894,7 @@ function timingBlock(e){
 
   return '<div id="tmodes">'
     + r("triggered","Triggered only","Nothing fires it automatically. You call it from somewhere else.")
-    + r("precise","Precise date","Lands on the exact day, via a daily on_actions driver.")
+    + r("precise","Precise date","Lands on the exact day. Scheduled once at game start, no daily checks.")
     + r("approximate","Approximate","Normal trigger plus mean_time_to_happen. Cheaper, but only checked every 20 days.")
     + '</div><div style="margin-top:13px">'+extra+'</div>';
 }
@@ -941,6 +943,23 @@ function syncVars(o, box){
     refreshPips(box, o);
   }
   touch();
+}
+
+/* Update the "scheduled with a delay of N days" hint live as the date
+   is typed, without a full re-render that would drop the text cursor. */
+function refreshDelayHint(e){
+  if(e.timing.mode !== "precise") return;
+  const box = document.getElementById("tDate");
+  if(!box) return;
+  const hint = box.closest(".row") && box.closest(".row").nextElementSibling;
+  if(!hint || !hint.classList.contains("hint")) return;
+  const d = startupDelay(e.timing.date);
+  const ok = dateValid(e.timing.date);
+  const dlabel = !ok ? "the date is not a real day"
+    : (d==null ? "\u2014" : (d<0 ? d + " days (before the start date)"
+    : (d===0 ? "0 days (fires at game start)"
+    : d + " days after " + (P.settings.startDate||"2025.1.1"))));
+  hint.innerHTML = 'Scheduled once at game start with a delay of <b>'+esc(dlabel)+'</b>, so nothing is checked every day. Counted on the game\'s 365-day calendar &mdash; no leap day.';
 }
 
 /* The trigger box owns its own text; this only rewrites the date line,
@@ -1114,8 +1133,8 @@ function wireMain(e){
   });
   const bind = (sel, fn)=>{ const el = $(sel); if(el) el.oninput = ()=>{ fn(el.value); touch(); }; };
   bind("#tTag", v=>{ e.timing.tag = v.toUpperCase().slice(0,3); });
-  bind("#tDate", v=>{ e.timing.date = v; });
-  bind("#tHours", v=>{ e.timing.hours = Math.max(0,Math.min(23, parseInt(v||"0",10)||0)); });
+  bind("#tDate", v=>{ e.timing.date = v; updatePreview(e); refreshDelayHint(e); });
+  bind("#tConds", v=>{ e.timing.conds = v; });
   bind("#tTrig", v=>{ e.timing.trigger = v; });
   const ad = $("#tADate");
   if(ad) ad.oninput = ()=>{
@@ -1570,12 +1589,35 @@ function redo(){
 /* =====================================================================
    10. Export — HOI4 files
    ===================================================================== */
-function prevDay(d){
-  const m = /^(\d{1,4})\.(\d{1,2})\.(\d{1,2})/.exec(String(d||"").trim());
-  if(!m) return "1935.12.31";
-  const dt = new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
-  dt.setUTCDate(dt.getUTCDate()-1);
-  return dt.getUTCFullYear()+"."+(dt.getUTCMonth()+1)+"."+dt.getUTCDate();
+/* HOI4's calendar has no leap day - February is always 28, every year
+   is 365 days. All date maths here uses that calendar, never JS Date,
+   so a delay counted here lines up with the day the game counts to. */
+const MONTH_DAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+function parseDate(d){
+  const m = /^(\d{1,4})\.(\d{1,2})\.(\d{1,2})\s*$/.exec(String(d||"").trim());
+  if(!m) return null;
+  const y = +m[1], mo = +m[2], da = +m[3];
+  if(mo < 1 || mo > 12 || da < 1) return null;
+  return { y, mo, da };
+}
+function dateValid(d){
+  const p = parseDate(d);
+  return !!p && p.da <= MONTH_DAYS[p.mo-1];
+}
+function dayOfYear(mo, da){         // 0-indexed within the year
+  let n = 0;
+  for(let i=0;i<mo-1;i++) n += MONTH_DAYS[i];
+  return n + (da - 1);
+}
+function absDay(d){                  // days since year 0, 365-day years
+  const p = parseDate(d);
+  return p ? p.y*365 + dayOfYear(p.mo, p.da) : null;
+}
+/* whole days from the campaign start to a target date, game calendar */
+function startupDelay(target){
+  const a = absDay(P.settings.startDate || "2025.1.1");
+  const b = absDay(target);
+  return (a==null || b==null) ? null : (b - a);
 }
 
 function locEscape(s){
@@ -1612,9 +1654,11 @@ function buildEventsFile(){
     out += "# " + key + (sp.title ? " - " + sp.title : "") + "\n";
     out += "#\n";
     if(e.timing.mode === "precise"){
-      out += "# Fires on " + e.timing.date + " from common/on_actions, which checks\n";
-      out += "# every day. A plain date trigger on the event itself is only\n";
-      out += "# checked every 20 days, so it would wander or miss entirely.\n";
+      const d = startupDelay(e.timing.date);
+      out += "# Scheduled from common/on_actions at game start, " +
+             (d==null ? "on its date." : (d===0 ? "with no delay (fires at start)." : "with a " + d + "-day delay.")) + "\n";
+      out += "# No daily check runs. Any trigger below is an extra prerequisite,\n";
+      out += "# tested when the delay elapses.\n";
     } else if(e.timing.mode === "approximate"){
       out += "# Approximate timing: trigger plus mean_time_to_happen. Checked\n";
       out += "# every 20 days, which is why it is cheap and why the exact day\n";
@@ -1651,6 +1695,8 @@ function buildEventsFile(){
       }
     } else {
       out += "\tis_triggered_only = yes\n";
+      if(e.timing.mode === "precise" && String(e.timing.conds||"").trim())
+        out += "\n\ttrigger = {\n" + indent(e.timing.conds,2) + "\n\t}\n";
     }
 
     if(e.type==="news" && e.major) out += "\tmajor = yes\n";
@@ -1750,6 +1796,7 @@ function buildOnActions(){
   const list = preciseEvents();
   if(!list.length) return null;
   const ns = nsClean();
+  const start = P.settings.startDate || "2025.1.1";
   const byTag = {};
   list.forEach(e=>{ const t = e.timing.tag.toUpperCase(); (byTag[t] = byTag[t]||[]).push(e); });
 
@@ -1757,41 +1804,37 @@ function buildOnActions(){
   out += "# " + "=".repeat(68) + "\n";
   out += "#  Precise-date drivers for the " + ns + " events.\n";
   out += "#\n";
-  out += "#  on_daily_TAG runs every day, so the event lands on the exact\n";
-  out += "#  date. Putting the date straight on the event instead would only\n";
-  out += "#  get checked every 20 days.\n";
+  out += "#  Every event is scheduled once, here at game start, with the\n";
+  out += "#  exact number of days from " + start + " to its date. No daily\n";
+  out += "#  check runs and no guard flag is needed - the schedule fires it\n";
+  out += "#  a single time on the right day. Days are counted on the game's\n";
+  out += "#  own 365-day calendar, which has no leap day.\n";
   out += "#\n";
-  out += "#  Each block is guarded by its own global flag, so it arms once\n";
-  out += "#  and never again. The event itself is is_triggered_only with no\n";
-  out += "#  trigger block, because a trigger there is one more thing that\n";
-  out += "#  can swallow it silently.\n";
+  out += "#  Any extra prerequisite lives in the event's own trigger block\n";
+  out += "#  and is checked when the delay elapses; if it fails then, the\n";
+  out += "#  event is simply skipped.\n";
   out += "# " + "=".repeat(68) + "\n\n";
   out += "on_actions = {\n";
+  out += "\ton_startup = {\n";
+  out += "\t\teffect = {\n";
   Object.keys(byTag).sort().forEach(tag=>{
-    out += "\n\ton_daily_" + tag + " = {\n";
-    out += "\t\teffect = {\n";
-    out += "\t\t\t" + tag + " = {\n";
-    byTag[tag].forEach(e=>{
+    out += "\n\t\t\t" + tag + " = {\n";
+    byTag[tag].sort((a,b)=>(startupDelay(a.timing.date)||0)-(startupDelay(b.timing.date)||0)).forEach(e=>{
       const key = evKey(e);
-      const flag = key.replace(/\./g,"_") + "_fired";
       const sp = splitText(e.text);
-      out += "\n\t\t\t\t# ---------- " + key + " : " + e.timing.date + (sp.title ? "  " + sp.title : "") + " ----------\n";
-      out += "\t\t\t\tif = {\n";
-      out += "\t\t\t\t\tlimit = {\n";
-      out += "\t\t\t\t\t\tNOT = { has_global_flag = " + flag + " }\n";
-      out += "\t\t\t\t\t\tdate > " + prevDay(e.timing.date) + "\n";
-      out += "\t\t\t\t\t}\n";
-      out += "\t\t\t\t\tset_global_flag = " + flag + "\n";
-      out += "\t\t\t\t\t" + (e.type==="news" ? "news_event" : "country_event")
-           + " = { id = " + key + " hours = " + (e.timing.hours||0) + " }\n";
-      out += '\t\t\t\t\tlog = "[GetDateText]: ' + key + ' armed"\n';
-      out += "\t\t\t\t}\n";
+      const d = startupDelay(e.timing.date);
+      const kind = e.type==="news" ? "news_event" : "country_event";
+      const call = (d && d>0)
+        ? kind + " = { id = " + key + " days = " + d + " }"
+        : kind + " = { id = " + key + " }";
+      out += "\t\t\t\t" + call.padEnd(52)
+           + " # " + e.timing.date + (d===0 ? " (at start)" : "") + (sp.title ? "  " + sp.title : "") + "\n";
     });
-    out += "\n\t\t\t}\n";
-    out += "\t\t}\n";
-    out += "\t}\n";
+    out += "\t\t\t}\n";
   });
-  out += "\n}\n";
+  out += "\t\t}\n";
+  out += "\t}\n";
+  out += "}\n";
   return out;
 }
 
@@ -1836,14 +1879,20 @@ function buildReadme(hasDriverFile){
   r += "  game uses for event pictures. No mipmaps, no conversion needed.\n";
   r += "* A missing sprite shows an empty frame rather than crashing, so\n";
   r += "  pictures can be swapped freely afterwards.\n";
+  r += "* Precise-date events are scheduled at game start with a day delay\n";
+  r += "  counted on the game's 365-day calendar (no leap day), so no daily\n";
+  r += "  on_action check runs. Set the campaign start date in the tool to\n";
+  r += "  match your bookmark, or the delays will be off.\n";
   if(list.length && !hasDriverFile){
     r += "\n";
     r += "Precise-date driver\n";
     r += "-------------------\n";
-    r += "You chose to paste this in yourself. Merge the on_daily_TAG blocks\n";
-    r += "below into your existing on_actions file. Do not create a second\n";
-    r += "on_actions file with the same name as a vanilla one -- HOI4 will\n";
-    r += "silently overwrite the original.\n\n";
+    r += "You chose to paste this in yourself. Merge the on_startup block\n";
+    r += "below into any on_actions file. on_actions are additive, so it sits\n";
+    r += "beside vanilla's on_startup rather than replacing it -- as long as\n";
+    r += "the file itself does not share a name with a vanilla one. Each event\n";
+    r += "is scheduled once, as a day delay from the campaign start; no daily\n";
+    r += "check runs.\n\n";
     r += buildOnActions();
   }
   return r;
@@ -1949,6 +1998,14 @@ function validate(){
       if(!e.timing.tag) push("error", e.id, null, at("is set to a precise date but has no country tag, so no driver can be written."));
       if(!/^\d{1,4}\.\d{1,2}\.\d{1,2}$/.test(String(e.timing.date||"").trim()))
         push("error", e.id, null, at("has a date the driver cannot read. Use year.month.day, as in 2025.1.20."));
+      else if(!dateValid(e.timing.date))
+        push("error", e.id, null, at("has a date that is not a real day on the game calendar (February has 28 days and there is no leap day). It would silently land on the following day."));
+      else {
+        const dd = startupDelay(e.timing.date);
+        if(dd != null && dd < 0)
+          push("error", e.id, null, at("falls before the campaign start of " + (P.settings.startDate||"2025.1.1") + ", so its delay is negative and it can never fire. Move the date, or change the start date in Settings."));
+      }
+      scanScript(e.timing.conds, at("extra conditions"), e.id, null, push);
     }
     if(e.timing.mode === "approximate"){
       const hasTrig = String(e.timing.trigger||"").trim();
@@ -2214,9 +2271,13 @@ function openSettings(){
     + '<div class="field"><label>News event picture</label><div class="row">'
     +   '<input type="number" id="sNW" value="'+s.newsW+'" min="1"><input type="number" id="sNH" value="'+s.newsH+'" min="1"></div>'
     +   '<div class="hint">Width &times; height. 397 &times; 153 is the vanilla news size.</div></div>'
-    + '<div class="field"><label>Default country tag</label>'
-    +   '<input type="text" id="sTag" class="mono" value="'+esc(s.defaultTag||"USA")+'" maxlength="3" style="text-transform:uppercase">'
-    +   '<div class="hint">Used for the tag on new precise events, and for the <span class="mono">original_tag</span> line prefilled into an approximate trigger &mdash; original_tag holds through civil wars and tag changes where <span class="mono">tag</span> does not.</div></div>'
+    + '<div class="row">'
+    +   '<div class="field" style="margin:0"><label>Default country tag</label>'
+    +     '<input type="text" id="sTag" class="mono" value="'+esc(s.defaultTag||"USA")+'" maxlength="3" style="text-transform:uppercase"></div>'
+    +   '<div class="field" style="margin:0;flex:1.4"><label>Campaign start date</label>'
+    +     '<input type="text" id="sStart" class="mono" value="'+esc(s.startDate||"2025.1.1")+'" placeholder="2025.1.1"></div>'
+    + '</div>'
+    + '<div class="hint" style="margin:-4px 0 13px">The tag fills new precise events and the <span class="mono">original_tag</span> line of an approximate trigger &mdash; it holds through civil wars and tag changes where <span class="mono">tag</span> does not. The start date is your bookmark\'s date: precise events are scheduled as a delay counted from it, so it must match.</div>'
     + '<div class="field"><label>Event numbering</label><div class="row">'
     +   '<input type="number" id="sCB" value="'+s.countryBase+'" min="0"><input type="number" id="sNB" value="'+s.newsBase+'" min="0"></div>'
     +   '<div class="hint">First country number, then first news number. Keeping them apart stops the two lists colliding once you have more than a handful of each.</div></div>'
@@ -2251,11 +2312,7 @@ function openSettings(){
 P = restore();
 if(!P.events.length){ /* start empty; the empty state explains itself */ }
 selId = P.events.length ? P.events[0].id : null;
-/* planner.html links back as events.html#ev=<id> */
-const deepEv = /[#&]ev=([A-Za-z0-9_-]+)/.exec(location.hash || "");
-if(deepEv && P.events.some(e=>e.id === deepEv[1])) selId = deepEv[1];
-const deepSel = P.events.find(e=>e.id === selId);
-if(deepSel) deepSel.options.forEach(o=>openOpts[o.id]=true);
+if(selId) P.events[0].options.forEach(o=>openOpts[o.id]=true);
 
 $("#ns").value = P.ns;
 $("#ns").oninput = ev=>{ P.ns = ev.target.value; touch(true); updatePreviewSafe(); };
@@ -2280,7 +2337,7 @@ $("#fileProj").onchange = ev=>{
       if(!p || !Array.isArray(p.events)) throw new Error("not a project file");
       p.settings = Object.assign({}, DEF_SETTINGS, p.settings||{});
       p.events.forEach(e=>{
-        e.timing = Object.assign({ mode:"triggered", tag:"USA", date:"2025.1.20", hours:23, trigger:"", mtthMonths:0, mtthDays:1 }, e.timing||{});
+        e.timing = Object.assign({}, TIMING_DEFAULTS, e.timing||{});
         e.options = (e.options||[]).map(o=>Object.assign(newOption(), o));
       });
       P = p; selId = P.events.length ? P.events[0].id : null;
@@ -2300,30 +2357,6 @@ document.addEventListener("keydown", ev=>{
   if(k === "s"){ ev.preventDefault(); $("#btnSave").click(); }
   else if(k === "z" && !ev.shiftKey){ ev.preventDefault(); undo(); }
   else if((k === "z" && ev.shiftKey) || k === "y"){ ev.preventDefault(); redo(); }
-});
-
-/* The story planner edits the same autosave. Pick its changes up when
-   this tab is in the background; if someone is here and typing, say so
-   instead of pulling the page out from under them. */
-addEventListener("storage", ev=>{
-  if(ev.key !== KEY || !ev.newValue) return;
-  let p = null;
-  try { p = JSON.parse(ev.newValue); } catch(e){ return; }
-  if(!p || !Array.isArray(p.events)) return;
-  if(JSON.stringify(p) === JSON.stringify(P)) return;
-  if(document.hasFocus()){
-    toast("The story planner changed these events \u2014 reload to see it.");
-    return;
-  }
-  p.settings = Object.assign({}, DEF_SETTINGS, p.settings||{});
-  p.events.forEach(e=>{
-    e.timing = Object.assign({ mode:"triggered", tag:"USA", date:"2025.1.20", hours:23, trigger:"", mtthMonths:0, mtthDays:1 }, e.timing||{});
-    e.options = (e.options||[]).map(o=>Object.assign(newOption(), o));
-  });
-  P = p;
-  if(!P.events.some(e=>e.id === selId)) selId = P.events.length ? P.events[0].id : null;
-  $("#ns").value = P.ns || "my_events";
-  renderList(); renderMain(); refreshCheckBadge(); commit();
 });
 
 renderList();
