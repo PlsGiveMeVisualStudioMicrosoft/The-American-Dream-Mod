@@ -223,6 +223,46 @@ button{cursor:pointer}
 .stage-msg p{font-size:13px; margin:0 0 16px; line-height:1.55}
 .stage-msg .btn{pointer-events:auto}
 
+/* ---------- system track ---------- */
+.track{flex:none; background:var(--card); border-top:1px solid var(--line); display:flex; flex-direction:column}
+.track.shut .track-b{display:none}
+.track-h{display:flex; align-items:center; gap:12px; padding:0 16px; height:34px; flex:none}
+.track.shut .dtoggle .tri{transform:rotate(-90deg)}
+.track-h .num{
+  width:44px; border:1px solid var(--line2); border-radius:var(--r); background:var(--card);
+  padding:2px 5px; font-family:var(--font-mono); font-size:11.5px; text-align:right;
+}
+.track-h .num.wide{width:82px; text-align:left}
+.track-h select{border:1px solid var(--line2); border-radius:var(--r); background:var(--card); padding:2px 5px; font-size:12px}
+.track-h .btn.on{background:var(--country); border-color:var(--country); color:#fff}
+.track-b canvas.edit{cursor:ns-resize}
+.track-h .chk{font-size:11.5px; color:var(--ink3)}
+.track-b{position:relative; flex:none; border-top:1px solid var(--line)}
+.track-b canvas{display:block; cursor:grab}
+.track-b canvas:active{cursor:grabbing}
+.read{font-family:var(--font-mono); font-size:11px; color:var(--ink3); white-space:nowrap}
+.read b{font-weight:700}
+.read .a{color:var(--country)}
+.read .c{color:var(--news)}
+
+/* approval / chaos pips, shared by cards, list rows and the option picker */
+.fx{font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:.02em; flex:none}
+.fx.a{color:var(--country)}
+.fx.c{color:var(--news)}
+
+.canon{display:flex; flex-direction:column; gap:4px}
+.canon .c-b{
+  display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+  border:1px solid var(--line); background:var(--card); border-radius:var(--r); padding:6px 9px; font-size:12.5px;
+}
+.canon .c-b:hover{background:var(--sunk)}
+.canon .c-b.on{border-color:var(--country); background:#eef2f7; color:var(--country)}
+.canon .ok{width:9px; height:9px; border-radius:50%; border:1px solid var(--line2); flex:none}
+.canon .c-b.on .ok{background:var(--country); border-color:var(--country)}
+.canon .kk{font-family:var(--font-mono); font-size:11px; color:var(--ink3); flex:none}
+.canon .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.canon .nm.empty{color:var(--ink3); font-style:italic}
+
 /* ---------- drawer ---------- */
 .drawer{flex:none; background:var(--card); border-top:1px solid var(--line); display:flex; flex-direction:column; max-height:42vh}
 .drawer.shut .drawer-b{display:none}
@@ -369,6 +409,31 @@ textarea{resize:vertical; font-size:13px; line-height:1.5}
     <div class="stage-msg" id="stageMsg" hidden></div>
   </div>
 
+  <div class="track" id="track">
+    <div class="track-h">
+      <button class="dtoggle" id="tToggle">
+        <svg class="tri" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 3.5L5 6.5L8 3.5"/></svg>
+        Approval &amp; chaos
+      </button>
+      <span class="read" id="tRead"></span>
+      <div class="spacer"></div>
+      <label class="chk" title="Modelled runs the events through the band, the bleed and the monthly pull. Running total just adds the deltas up.">Line
+        <select id="tMode">
+          <option value="sim">modelled</option>
+          <option value="raw">running total</option>
+          <option value="both">both</option>
+        </select></label>
+      <label class="chk" title="The monthly target off the curve, with the band the system keeps approval inside"><input type="checkbox" id="tShowBand"> Trend</label>
+      <label class="chk"><input type="checkbox" id="tShowSpi"> Spirits</label>
+      <button class="btn sm ghost" id="tCurve" title="Drag the dashed trend line to retune a month, then copy it back into the tuning file">Edit trend</button>
+      <button class="btn sm ghost" id="tTune" title="Re-read USA_approval_00_tuning.txt">Tuning</button>
+    </div>
+    <div class="track-b" id="tBody">
+      <canvas id="tCanvas"></canvas>
+      <div class="tip" id="tTip" hidden></div>
+    </div>
+  </div>
+
   <div class="drawer" id="drawer">
     <div class="drawer-h">
       <button class="dtoggle" id="dToggle">
@@ -512,7 +577,22 @@ const DEF_T = {
   hiddenLanes:[],
   hiddenTags:[],
   view:{ px:0.55, x:60, y:0 },
-  ui:{ drawer:true, srcEv:true, srcNote:true, sort:"date" }
+  ui:{ drawer:true, srcEv:true, srcNote:true, sort:"date" },
+  /* The approval / chaos track. Every number below is out of
+     USA_approval_00_tuning.txt and can be re-read from it at any time
+     through the Tuning box, so retuning the mod retunes the planner. */
+  sys:{
+    open:true, spirits:true, band:true, mode:"both",
+    startDate:"2025.1.20", aprStart:47, chaosStart:4, stability:50,
+    tune:{
+      band:8, pull:0.5, bleed:0.5,
+      eventAt:10, cooldown:30,
+      neutral:40, stabScale:1,
+      chaosFromApr:0.01, chaosFromStab:2, creepCap:1,
+      tier2:45, tier3:38, tier4:31, tier5:24, tier6:15,
+      curve:[47,45,43,44,43,40,37,40,40,41,36,36,39,36,37,35,35,35,35,34,33,32,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,15,14,13,13,12,12,11,10,8,7]
+    }
+  }
 };
 
 let T = null;          // planner data
@@ -526,7 +606,7 @@ function newNote(date, lane){
            color:"slate", tags:[], image:null, links:[], notes:"" };
 }
 function metaOf(id){
-  if(!T.meta[id]) T.meta[id] = { planDate:"", color:"", tags:[], notes:"", lane:"" };
+  if(!T.meta[id]) T.meta[id] = { planDate:"", color:"", tags:[], notes:"", lane:"", canon:"" };
   const m = T.meta[id];
   if(!Array.isArray(m.tags)) m.tags = [];
   return m;
@@ -536,7 +616,7 @@ function tidyMeta(){
   Object.keys(T.meta).forEach(id=>{
     const m = T.meta[id];
     if(!m) { delete T.meta[id]; return; }
-    const empty = !m.planDate && !m.color && !m.notes && !m.lane && !(m.tags||[]).length;
+    const empty = !m.planDate && !m.color && !m.notes && !m.lane && !m.canon && !(m.tags||[]).length;
     if(empty) delete T.meta[id];
   });
 }
@@ -561,6 +641,8 @@ function loadT(){
         const out = Object.assign({}, DEF_T, t);
         out.view = Object.assign({}, DEF_T.view, t.view||{});
         out.ui   = Object.assign({}, DEF_T.ui, t.ui||{});
+        out.sys  = Object.assign(JSON.parse(JSON.stringify(DEF_T.sys)), t.sys||{});
+        out.sys.tune = Object.assign({}, DEF_T.sys.tune, (t.sys && t.sys.tune) || {});
         out.items = Array.isArray(t.items) ? t.items.map(normNote) : [];
         out.meta = (t.meta && typeof t.meta === "object") ? t.meta : {};
         out.laneOrder   = Array.isArray(t.laneOrder) ? t.laneOrder : [];
@@ -664,7 +746,7 @@ function derive(force){
         notes:m.notes || "",
         links:[],
         kind:e.type, mode:t.mode || "triggered",
-        planned:!dated,
+        planned:!dated, fx:evDelta(e),
         evkey:nsClean()+"."+(nums[e.id] != null ? nums[e.id] : "?")
       });
     });
@@ -769,7 +851,7 @@ function cardHTML(it){
   if(it.image) h += '<img class="card-img" src="'+esc(it.image)+'" alt="">';
   h += '<div class="card-b">';
   h += '<div class="card-k"><span class="src">'+key+'</span>'+(kind?'<span>'+kind+'</span>':'')
-     + (it.planned?'<span>planned</span>':'')+'</div>';
+     + (it.planned?'<span>planned</span>':'') + fxPips(it) + '</div>';
   h += '<h4'+(it.title?'':' class="empty"')+'>'+esc(it.title||"Untitled")+'</h4>';
   if(it.desc) h += '<p>'+esc(it.desc)+'</p>';
   h += '<div class="card-d">'+esc(niceDate(it.date))+(it.mode==="approximate"?" &middot; around":"")+'</div>';
@@ -797,7 +879,7 @@ function rebuild(){
   REC = [];
   if(!LANES.length){
     layout(); paintGutter(); paintRuler();
-    paintList(vis, all); updateStageMsg(all, vis, []);
+    paintList(vis, all); buildSys(); syncTrack(); updateStageMsg(all, vis, []);
     return;
   }
 
@@ -843,6 +925,8 @@ function rebuild(){
   paintGutter();
   paintRuler();
   paintList(vis, all);
+  buildSys();
+  syncTrack();
   updateStageMsg(all, vis, dated);
   selHighlight();
 }
@@ -964,6 +1048,7 @@ function repan(){
   rw.style.transform    = "translate3d("+v.x+"px,0,0)";
   gw.style.transform    = "translate3d(0,"+v.y+"px,0)";
   paintRuler();
+  paintTrack();
 }
 
 /* ---------------------------------------------------------------------
@@ -1080,6 +1165,7 @@ function paintList(vis, all){
       + '<span class="dt">'+esc(niceDate(it.date))+'</span>'
       + '<span class="ln">'+esc(it.lane)+'</span>'
       + '<span class="ti'+(it.title?'':' empty')+'">'+esc(it.title||"Untitled")+'</span>'
+      + fxPips(it)
       + '<span class="kx">'+esc(it.src === "ev" ? it.evkey : "note")+'</span>'
       + '</button>').join("");
   }
@@ -1449,6 +1535,24 @@ function openEditor(key){
        + '</select><div class="hint" id="modeHint"></div></div>';
   }
 
+  /* Which branch the story actually takes. Only this option's numbers
+     and ideas reach the track. */
+  if(isEv && (it.ev.options||[]).length > 1){
+    const cur = canonOf(it.ev) || {};
+    h += '<div class="field"><label>Canon option</label><div class="canon" id="fCanon">'
+       + it.ev.options.map((o,i)=>{
+           const d = optDelta(o);
+           return '<button type="button" class="c-b'+(o.id === cur.id ? " on" : "")+'" data-oid="'+esc(o.id)+'">'
+                + '<i class="ok"></i><span class="kk">.'+optSuffix(i)+'</span>'
+                + '<span class="nm'+(o.name?"":" empty")+'">'+esc(o.name || "Untitled option")+'</span>'
+                + (d.apr   ? '<span class="fx a">'+sgn(d.apr)+'</span>'   : "")
+                + (d.chaos ? '<span class="fx c">'+sgn(d.chaos)+'</span>' : "")
+                + '</button>';
+         }).join("")
+       + '</div><div class="hint">The path the track follows. The mod still offers every option &mdash; this only decides '
+       + 'whose approval, chaos and national spirits get counted when the line is drawn.</div></div>';
+  }
+
   h += '<div class="row">'
      + '<div class="field"><label>'+dateLabel+'</label>'
      + '<input type="text" class="mono" id="fDate" value="'+esc(it.dateStr||"")+'" placeholder="2025.1.20"></div>'
@@ -1507,6 +1611,13 @@ function openEditor(key){
   box.querySelectorAll("#fColor .sw-b").forEach(b=>{
     b.onclick = ()=>{
       box.querySelectorAll("#fColor .sw-b").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on");
+    };
+  });
+
+  box.querySelectorAll("#fCanon .c-b").forEach(b=>{
+    b.onclick = ()=>{
+      box.querySelectorAll("#fCanon .c-b").forEach(x=>x.classList.remove("on"));
       b.classList.add("on");
     };
   });
@@ -1608,6 +1719,10 @@ function openEditor(key){
       mm.color = color === (e.type === "news" ? "red" : "navy") ? "" : color;
       mm.tags = tags;
       mm.notes = notes;
+      if(box.querySelector("#fCanon")){
+        const cb = box.querySelector("#fCanon .c-b.on");
+        mm.canon = cb ? cb.dataset.oid : "";
+      }
     } else {
       const n = it.note;
       n.title = title; n.desc = desc;
@@ -1684,7 +1799,7 @@ function exportJSON(){
   const out = {
     kind:"american-dream-story-planner", v:1,
     exported:modDate(TODAY),
-    items:T.items, meta:T.meta, laneOrder:T.laneOrder
+    items:T.items, meta:T.meta, laneOrder:T.laneOrder, sys:T.sys
   };
   download("story-planner.json", JSON.stringify(out, null, 2), "application/json");
   toast("Exported story-planner.json");
@@ -1706,6 +1821,7 @@ function importJSON(file){
     T.items = merge ? T.items.concat(items.filter(n=>!T.items.some(o=>o.id === n.id))) : items;
     if(d.meta && typeof d.meta === "object") T.meta = Object.assign(merge ? T.meta : {}, d.meta);
     if(Array.isArray(d.laneOrder)) T.laneOrder = d.laneOrder;
+    if(d.sys && typeof d.sys === "object"){ T.sys = Object.assign({}, DEF_T.sys, d.sys); trackFields(); }
     commit();
     toast("Imported " + items.length + " notes");
   };
@@ -1758,6 +1874,862 @@ function toast(msg){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=>{ if(toastEl){ toastEl.remove(); toastEl = null; } }, 3200);
 }
+
+
+/* ---------------------------------------------------------------------
+   15b. Approval, chaos and national spirits
+
+   Two lines can be drawn, and they say different things.
+
+   RUNNING TOTAL   every apr_delta and chaos_delta the events write,
+                   added up. This is story pressure: how hard the
+                   events push, before the system pushes back.
+
+   MODELLED        the same events run through USA_approval_01_system:
+                   the monthly target off the curve, the band around
+                   it, the daily bleed back to the edge, the monthly
+                   pull inside it, and the chaos creep. This is what
+                   the bar will actually read in game.
+
+   The knobs come out of USA_approval_00_tuning.txt - paste it into
+   the Tuning box and the planner re-reads every one of them.
+
+   One option per event counts: the canon one, picked in the editor.
+   An event's immediate block always counts, since it runs whichever
+   option the player takes. Lane filters and the search box do not
+   touch either line - the system is the system, whatever the board
+   happens to be showing.
+   --------------------------------------------------------------------- */
+const GUT = 104;                                  /* matches --gutter, so the chart lines up with the lanes */
+const CH_H = 152, CH_T = 15, CH_B = 20;
+const SPI_ROW = 18, SPI_MAX = 6;
+const MONO = 'ui-monospace,"SF Mono",Menlo,Consolas,monospace';
+const HEX  = { navy:"#1F3A5F", red:"#A33A2A", green:"#3E6B4A", amber:"#8A6A18", plum:"#5B4A7A", slate:"#5A6169" };
+const HEXT = { navy:"#eef2f7", red:"#fbeceb", green:"#e7f0e9", amber:"#fbf6e8", plum:"#f1eef7", slate:"#EFF1EC" };
+const OPT_LETTERS = "abcdefghijklmnopqrstuvwxyz".split("");
+function optSuffix(i){ return i < 26 ? OPT_LETTERS[i] : "opt"+(i+1); }
+function fmt1(v){ return String(Math.round(v*10)/10); }
+function sgn(v){ return (v > 0 ? "+" : "") + fmt1(v); }
+function sysCfg(){ if(!T.sys) T.sys = JSON.parse(JSON.stringify(DEF_T.sys)); return T.sys; }
+function tuneCfg(){ const s = sysCfg(); if(!s.tune) s.tune = JSON.parse(JSON.stringify(DEF_T.sys.tune)); return s.tune; }
+
+/* ---- reading the mod out of the effect boxes ---- */
+function nocom(t){ return String(t == null ? "" : t).replace(/#[^\n]*/g, ""); }
+function sumDelta(text, name){
+  const rx = new RegExp("\\b" + name + "_delta\\s*=\\s*(-?\\d+(?:\\.\\d+)?)", "g");
+  let m, n = 0, hit = false;
+  while((m = rx.exec(text))){ n += parseFloat(m[1]); hit = true; }
+  return hit ? n : null;
+}
+function optDelta(o){
+  const t = nocom(o && o.effects), v = (o && o.vars) || {};
+  const a = sumDelta(t, "apr"), c = sumDelta(t, "chaos");
+  return {
+    apr:   a != null ? a : (v.aprOn   ? (Number(v.apr)   || 0) : 0),
+    chaos: c != null ? c : (v.chaosOn ? (Number(v.chaos) || 0) : 0)
+  };
+}
+function canonOf(e){
+  const opts = (e && e.options) || [];
+  if(!opts.length) return null;
+  const id = (T.meta[e.id] || {}).canon;
+  return opts.find(o=>o.id === id) || opts[0];
+}
+function evDelta(e){
+  const imm = nocom(e && e.immediate);
+  const o = canonOf(e), d = o ? optDelta(o) : { apr:0, chaos:0 };
+  return { apr:(sumDelta(imm,"apr") || 0) + d.apr, chaos:(sumDelta(imm,"chaos") || 0) + d.chaos };
+}
+function fxPips(it){
+  const f = it && it.fx;
+  if(!f || (!f.apr && !f.chaos)) return "";
+  return (f.apr   ? '<span class="fx a" title="Approval">'+sgn(f.apr)+'</span>'  : "")
+       + (f.chaos ? '<span class="fx c" title="Chaos">'+sgn(f.chaos)+'</span>' : "");
+}
+
+const RX_IDEA  = /\b(add_ideas|remove_ideas)\s*=\s*(?:\{([^}]*)\}|([A-Za-z0-9_.]+))/g;
+const RX_TIMED = /\badd_timed_idea\s*=\s*\{([^}]*)\}/g;
+const RX_SWAP  = /\bswap_ideas\s*=\s*\{([^}]*)\}/g;
+function ideaOps(text){
+  const t = nocom(text), out = [];
+  let m;
+  RX_IDEA.lastIndex = 0;
+  while((m = RX_IDEA.exec(t))){
+    const names = m[3] ? [m[3]] : String(m[2] || "").split(/\s+/).filter(x=>/^[A-Za-z0-9_.]+$/.test(x));
+    names.forEach(n=>out.push({ op:(m[1] === "add_ideas" ? "add" : "remove"), idea:n }));
+  }
+  RX_TIMED.lastIndex = 0;
+  while((m = RX_TIMED.exec(t))){
+    const id = /idea\s*=\s*([A-Za-z0-9_.]+)/.exec(m[1]);
+    const dy = /days\s*=\s*(\d+)/.exec(m[1]);
+    if(id) out.push({ op:"add", idea:id[1], days:dy ? +dy[1] : 0 });
+  }
+  RX_SWAP.lastIndex = 0;
+  while((m = RX_SWAP.exec(t))){
+    const rm = /remove_idea\s*=\s*([A-Za-z0-9_.]+)/.exec(m[1]);
+    const ad = /add_idea\s*=\s*([A-Za-z0-9_.]+)/.exec(m[1]);
+    if(rm) out.push({ op:"remove", idea:rm[1] });
+    if(ad) out.push({ op:"add", idea:ad[1] });
+  }
+  return out;
+}
+function evIdeas(e){
+  const o = canonOf(e);
+  return ideaOps(String((e && e.immediate) || "") + "\n" + String((o && o.effects) || ""));
+}
+
+/* ---- reading USA_approval_00_tuning.txt ---- */
+const TUNE_KEYS = [
+  ["band","usa_apr_band"], ["pull","usa_apr_pull"], ["bleed","usa_apr_bleed_per_day"],
+  ["eventAt","usa_apr_event_at"], ["cooldown","usa_apr_evt_cooldown"],
+  ["neutral","usa_apr_neutral"], ["stabScale","usa_apr_stab_scale"],
+  ["chaosFromApr","usa_chaos_from_approval"], ["chaosFromStab","usa_chaos_from_stability"],
+  ["creepCap","usa_chaos_creep_cap"],
+  ["tier2","usa_apr_tier2_at"], ["tier3","usa_apr_tier3_at"], ["tier4","usa_apr_tier4_at"],
+  ["tier5","usa_apr_tier5_at"], ["tier6","usa_apr_tier6_at"],
+  ["aprStart","usa_apr_start"], ["chaosStart","usa_chaos_start"]
+];
+function readTuning(text){
+  const t = nocom(text), got = {};
+  let found = 0;
+  TUNE_KEYS.forEach(([k, name])=>{
+    const m = new RegExp("\\b" + name + "\\s*=\\s*(-?\\d+(?:\\.\\d+)?)").exec(t);
+    if(m){ got[k] = parseFloat(m[1]); found++; }
+  });
+  const curve = [];
+  const rx = /add_to_array\s*=\s*\{[^}]*\barray\s*=\s*usa_apr_target_array\b[^}]*\bvalue\s*=\s*(-?\d+(?:\.\d+)?)[^}]*\}/g;
+  let m;
+  while((m = rx.exec(t))) curve.push(parseFloat(m[1]));
+  if(curve.length){ got.curve = curve; found++; }
+  return found ? got : null;
+}
+
+/* ---- the walk ---- */
+let SYS = {
+  pts:[], spans:[], tiers:[], sim:[], fires:[],
+  rows:0, steps:0, undated:0, preArm:0,
+  armDay:0, endDay:0, first:{ apr:0, chaos:0 }, last:{ apr:0, chaos:0 }, simLast:{ apr:0, chaos:0 }
+};
+
+function tierAt(v, tu){
+  let t = 1;
+  if(v < tu.tier2) t = 2;
+  if(v < tu.tier3) t = 3;
+  if(v < tu.tier4) t = 4;
+  if(v < tu.tier5) t = 5;
+  if(v < tu.tier6) t = 6;
+  return t;
+}
+
+function buildSys(){
+  const s = sysCfg(), tu = tuneCfg();
+  const arm = parseDate(s.startDate) || { y:2025, m:1, d:20 };
+  const armDay = dayOf(arm);
+  const aprStart   = clamp(Number(s.aprStart)   || 0, 0, 100);
+  const chaosStart = clamp(Number(s.chaosStart) || 0, 0, 100);
+
+  /* every event that writes something, in date order */
+  const list = [];
+  let undated = 0;
+  if(P) P.events.forEach(e=>{
+    const t = e.timing || {};
+    const dated = (t.mode === "precise" || t.mode === "approximate");
+    const raw = dated ? t.date : ((T.meta[e.id] || {}).planDate || "");
+    const d = parseDate(raw);
+    const dl = evDelta(e), ops = evIdeas(e);
+    if(!dl.apr && !dl.chaos && !ops.length) return;
+    if(!d){ undated++; return; }
+    list.push({ e:e, day:dayOf(d), dl:dl, ops:ops });
+  });
+  list.sort((a,b)=> a.day - b.day || (nums[a.e.id] || 0) - (nums[b.e.id] || 0));
+
+  const seed = list.length ? Math.min(armDay, list[0].day) : armDay;
+
+  /* the curve keeps moving whether or not events are written against it,
+     so the track runs to the end of it, not to the last event */
+  const curve = (tu.curve && tu.curve.length) ? tu.curve : [aprStart];
+  const months = curve.length;
+  const curveEnd = dayOf({ y:arm.y + Math.floor((arm.m - 1 + months)/12),
+                           m:((arm.m - 1 + months) % 12) + 1, d:1 }) - 1;
+  const endDay = Math.max((list.length ? Math.max(armDay, list[list.length-1].day) : armDay) + 60, curveEnd);
+
+  /* ---- 1. the running total, events only ---- */
+  let apr = aprStart, chaos = chaosStart;
+  const pts = [{ day:seed, apr:apr, chaos:chaos, e:null }];
+  const open = {}, spans = [];
+  let steps = 0, preArm = 0;
+
+  list.forEach(r=>{
+    if(r.day < armDay && (r.dl.apr || r.dl.chaos)) preArm++;
+    if(r.dl.apr || r.dl.chaos){
+      apr   = clamp(apr   + r.dl.apr,   0, 100);
+      chaos = clamp(chaos + r.dl.chaos, 0, 100);
+      steps++;
+      pts.push({ day:r.day, apr:apr, chaos:chaos, e:r.e, dl:r.dl, r:r, key:"ev:"+r.e.id });
+    }
+    r.ops.forEach(op=>{
+      if(op.op === "add"){
+        if(open[op.idea]) return;
+        open[op.idea] = { from:r.day, evId:r.e.id, until:(op.days ? r.day + op.days : 0) };
+      } else {
+        const o = open[op.idea];
+        if(!o) return;
+        spans.push({ idea:op.idea, from:o.from, to:r.day, evId:o.evId });
+        delete open[op.idea];
+      }
+    });
+  });
+  Object.keys(open).forEach(k=>{
+    const o = open[k];
+    spans.push({ idea:k, from:o.from, to:(o.until || 0), evId:o.evId, open:!o.until });
+  });
+
+  /* ---- 2. the same events through the system ---- */
+  const byDay = {};
+  list.forEach(r=>{ if(r.day >= armDay && (r.dl.apr || r.dl.chaos)) (byDay[r.day] = byDay[r.day] || []).push(r); });
+
+  const sim = [], fires = [], tiers = [];
+  let real = aprStart, creal = chaosStart, target = aprStart;
+  let cd = 0, hiEp = false, loEp = false, tier = tierAt(real, tu), tierFrom = armDay;
+  const baseStab = clamp((Number(s.stability) == null ? 50 : Number(s.stability)) / 100, 0, 1);
+  const stop = Math.min(endDay, armDay + 20000);
+
+  for(let d = armDay; d <= stop; d++){
+    const o = fromDay(d);
+
+    /* monthly tick: target moves, pull applies inside the band, chaos creeps */
+    if(d > armDay && o.d === 1){
+      const ix = clamp((o.y - arm.y)*12 + (o.m - arm.m), 0, curve.length - 1);
+      target = curve[ix];
+      if(Math.abs(real - target) <= tu.band) real += (target - real) * tu.pull;
+
+      let gain = (50 - real) * tu.chaosFromApr;
+      const stab = clamp(baseStab + ((real - tu.neutral) / 100) * tu.stabScale, 0, 1);
+      gain += (0.5 - stab) * tu.chaosFromStab;
+      creal = clamp(creal + clamp(gain, 0, tu.creepCap), 0, 100);
+    }
+
+    /* what the story does to it today, and how much of it will survive:
+       anything sitting outside the band is on loan from the bleed */
+    (byDay[d] || []).forEach(r=>{
+      real  = clamp(real  + r.dl.apr,   0, 100);
+      creal = clamp(creal + r.dl.chaos, 0, 100);
+      r.landed = real;
+      r.target = target;
+      r.spent  = Math.max(0, Math.abs(real - target) - tu.band);
+    });
+
+    /* daily correction, and the overshoot events it fires on the way */
+    if(cd > 0) cd--;
+    const dev = real - target;
+    if(dev > tu.band){
+      const excess = dev - tu.band;
+      if(!hiEp && excess >= tu.eventAt && cd <= 0){ hiEp = true; cd = tu.cooldown; fires.push({ day:d, high:true }); }
+      real = Math.max(real - tu.bleed, target + tu.band);
+    } else if(dev < -tu.band){
+      const excess = -dev - tu.band;
+      if(!loEp && excess >= tu.eventAt && cd <= 0){ loEp = true; cd = tu.cooldown; fires.push({ day:d, high:false }); }
+      real = Math.min(real + tu.bleed, target - tu.band);
+    } else { hiEp = false; loEp = false; }
+    real = clamp(real, 0, 100);
+
+    const nt = tierAt(real, tu);
+    if(nt !== tier){ tiers.push({ tier:tier, from:tierFrom, to:d }); tier = nt; tierFrom = d; }
+
+    sim.push({ day:d, apr:real, chaos:creal, target:target });
+  }
+  tiers.push({ tier:tier, from:tierFrom, to:0, open:true });
+
+  /* ---- 3. ribbons, packed into as few rows as they will fit ---- */
+  spans.sort((a,b)=> a.from - b.from || a.idea.localeCompare(b.idea));
+  const rowEnd = [];
+  spans.forEach(sp=>{
+    const to = sp.to || (endDay + 3650);
+    let r = 0;
+    while(r < rowEnd.length && rowEnd[r] > sp.from) r++;
+    if(r === rowEnd.length) rowEnd.push(to); else rowEnd[r] = to;
+    sp.row = r + 1;                                  /* row 0 belongs to the tier spirit */
+  });
+
+  SYS = {
+    pts:pts, spans:spans, tiers:tiers, sim:sim, fires:fires,
+    rows:rowEnd.length + 1, steps:steps, undated:undated, preArm:preArm,
+    armDay:armDay, endDay:endDay,
+    first:{ apr:aprStart, chaos:chaosStart },
+    last:{ apr:apr, chaos:chaos },
+    simLast:{ apr:real, chaos:creal }
+  };
+}
+
+/* ---- drawing ---- */
+const trackEl = $("#track"), tBody = $("#tBody"), tCv = $("#tCanvas"), tTip = $("#tTip");
+let tW = 0, tH = 0, tLastH = -1, tCursor = null;
+let tPts = [], tBars = [];
+
+function trackShut(){ return sysCfg().open === false; }
+function spiRows(){ return sysCfg().spirits === false ? 0 : Math.min(SYS.rows, SPI_MAX); }
+function trackH(){ const r = spiRows(); return CH_H + (r ? r*SPI_ROW + 12 : 0); }
+function lineMode(){ return sysCfg().mode || "both"; }
+function showSim(){ return lineMode() !== "raw"; }
+function showRaw(){ return lineMode() !== "sim"; }
+
+function syncTrack(){
+  trackEl.classList.toggle("shut", trackShut());
+  paintHead();
+  const h = trackShut() ? 0 : trackH();
+  if(!trackShut()) tBody.style.height = h + "px";
+  if(h !== tLastH){
+    tLastH = h;
+    requestAnimationFrame(()=>{ layout(); repan(); });     /* the stage just got taller or shorter */
+  }
+  if(!trackShut()) paintTrack();
+}
+
+function paintHead(){
+  const el = $("#tRead");
+  if(!el) return;
+  if(!SYS.steps && SYS.spans.length === 0){
+    el.innerHTML = '<span style="opacity:.8">nothing writes approval, chaos or a spirit yet</span>';
+    return;
+  }
+  const sep = ' <span style="opacity:.45">&middot;</span> ';
+  const end = showSim() ? SYS.simLast : SYS.last;
+  /* with both lines up, the raw figure is the interesting comparison */
+  const also = v => (lineMode() === "both" ? ' <span style="opacity:.5">(raw ' + fmt1(v) + ')</span>' : '');
+  el.innerHTML =
+      '<b class="a">apr</b> ' + fmt1(SYS.first.apr) + ' &rarr; ' + fmt1(end.apr) + also(SYS.last.apr)
+    + sep + '<b class="c">chaos</b> ' + fmt1(SYS.first.chaos) + ' &rarr; ' + fmt1(end.chaos) + also(SYS.last.chaos)
+    + sep + '<span style="opacity:.75">' + SYS.steps + (SYS.steps === 1 ? ' event' : ' events')
+    + (SYS.spans.length ? ', ' + SYS.spans.length + (SYS.spans.length === 1 ? ' spirit' : ' spirits') : '')
+    + (SYS.fires.length ? ', ' + SYS.fires.length + ' overshoot' : '')
+    + '</span>'
+    + (SYS.undated ? sep + '<span style="color:var(--warn)" title="These write approval, chaos or a spirit but have no date yet">'
+       + SYS.undated + ' undated</span>' : '')
+    + (SYS.preArm ? sep + '<span style="color:var(--news)" title="These fire before USA_apr_arm_system runs, so the arming effect overwrites whatever they wrote">'
+       + SYS.preArm + ' before arming</span>' : '');
+}
+
+function tHLine(g, x1, x2, y, col){
+  g.strokeStyle = col; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(x1, Math.round(y) + .5); g.lineTo(x2, Math.round(y) + .5); g.stroke();
+}
+function tVLine(g, x, y1, y2, col, dash){
+  g.save();
+  g.strokeStyle = col; g.lineWidth = 1;
+  if(dash) g.setLineDash([3,3]);
+  g.beginPath(); g.moveTo(Math.round(x) + .5, y1); g.lineTo(Math.round(x) + .5, y2); g.stroke();
+  g.restore();
+}
+function tDot(g, x, y, col, hollow){
+  g.beginPath(); g.arc(x, y, 2.6, 0, 6.2832);
+  g.fillStyle = hollow ? "#fff" : col; g.fill();
+  g.lineWidth = hollow ? 1.6 : 1.4; g.strokeStyle = hollow ? col : "#fff"; g.stroke();
+}
+function tRound(g, x, y, w, h, r){
+  const rr = Math.min(r, Math.abs(w)/2, h/2);
+  g.beginPath();
+  g.moveTo(x+rr, y); g.lineTo(x+w-rr, y); g.quadraticCurveTo(x+w, y, x+w, y+rr);
+  g.lineTo(x+w, y+h-rr); g.quadraticCurveTo(x+w, y+h, x+w-rr, y+h);
+  g.lineTo(x+rr, y+h); g.quadraticCurveTo(x, y+h, x, y+h-rr);
+  g.lineTo(x, y+rr); g.quadraticCurveTo(x, y, x+rr, y);
+  g.closePath();
+}
+const TIER_COL = { 1:"green", 2:"green", 3:"amber", 4:"amber", 5:"red", 6:"red" };
+
+function paintTrack(){
+  if(trackShut()) return;
+  const w = tBody.clientWidth | 0, h = tBody.clientHeight | 0;
+  if(w < 2 || h < 2) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if(w !== tW || h !== tH){
+    tW = w; tH = h;
+    tCv.width = Math.round(w*dpr); tCv.height = Math.round(h*dpr);
+    tCv.style.width = w + "px"; tCv.style.height = h + "px";
+  }
+  const g = tCv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  g.textBaseline = "middle";
+
+  const vx = T.view.x, tu = tuneCfg();
+  const X = d => clamp(xOf(d) + vx, -40000, w + 40000);
+  const Y = v => CH_T + (1 - clamp(v, 0, 100)/100) * (CH_H - CH_T - CH_B);
+  const pts = SYS.pts, sim = SYS.sim;
+  tPts = []; tBars = [];
+
+  [25, 50, 75].forEach(v=>tHLine(g, GUT, w, Y(v), "#EDEFE9"));
+  tHLine(g, GUT, w, Y(100), "#E4E7E0");
+  tHLine(g, GUT, w, Y(0), "#D7DAD2");
+
+  g.save();
+  g.beginPath(); g.rect(GUT, 0, w - GUT, h); g.clip();
+
+  /* the corridor the system keeps approval inside */
+  if(sysCfg().band !== false && sim.length){
+    const stepD = Math.max(1, Math.floor(1 / Math.max(T.view.px, 0.0001)));
+    const band = tu.band;
+    g.beginPath();
+    for(let i = 0; i < sim.length; i += stepD){ const p = sim[i]; g.lineTo(X(p.day), Y(p.target + band)); }
+    for(let i = sim.length - 1; i >= 0; i -= stepD){ const p = sim[i]; g.lineTo(X(p.day), Y(p.target - band)); }
+    g.closePath();
+    g.fillStyle = "rgba(31,58,95,.075)"; g.fill();
+
+    g.save();
+    g.setLineDash([4,4]); g.strokeStyle = "rgba(31,58,95,.42)"; g.lineWidth = 1.2;
+    g.beginPath();
+    for(let i = 0; i < sim.length; i += stepD){ const p = sim[i]; g.lineTo(X(p.day), Y(p.target)); }
+    g.stroke();
+    g.restore();
+  }
+
+  if(pts.length){
+    const x0 = X(pts[0].day), endX = Math.max(X(SYS.endDay), x0);
+
+    /* the running total, as a step */
+    const walk = key=>{
+      g.beginPath();
+      let y = Y(pts[0][key]);
+      g.moveTo(x0, y);
+      for(let i = 1; i < pts.length; i++){
+        const nx = X(pts[i].day);
+        g.lineTo(nx, y);
+        y = Y(pts[i][key]);
+        g.lineTo(nx, y);
+      }
+      g.lineTo(endX, y);
+    };
+
+    tVLine(g, X(SYS.armDay), CH_T - 6, Y(0), "#C9CDC3", true);   /* the day the system is armed */
+
+    if(showSim() && sim.length){
+      const stepD = Math.max(1, Math.floor(1 / Math.max(T.view.px, 0.0001)));
+      const trace = key=>{
+        g.beginPath();
+        for(let i = 0; i < sim.length; i += stepD){ const p = sim[i]; g.lineTo(X(p.day), Y(p[key])); }
+        const last = sim[sim.length-1];
+        g.lineTo(X(last.day), Y(last[key]));
+      };
+      trace("chaos");
+      g.lineTo(X(sim[sim.length-1].day), Y(0)); g.lineTo(X(sim[0].day), Y(0)); g.closePath();
+      g.fillStyle = "rgba(163,58,42,.10)"; g.fill();
+      trace("chaos"); g.strokeStyle = HEX.red;  g.lineWidth = 1.7; g.lineJoin = "round"; g.stroke();
+      trace("apr");   g.strokeStyle = HEX.navy; g.lineWidth = 1.7; g.stroke();
+    }
+
+    if(showRaw()){
+      g.save();
+      g.setLineDash([2,3]); g.lineWidth = 1.4;
+      if(!showSim()){
+        walk("chaos");
+        g.lineTo(endX, Y(0)); g.lineTo(x0, Y(0)); g.closePath();
+        g.fillStyle = "rgba(163,58,42,.10)"; g.fill();
+      }
+      walk("chaos"); g.strokeStyle = showSim() ? "rgba(163,58,42,.55)" : HEX.red;  g.stroke();
+      walk("apr");   g.strokeStyle = showSim() ? "rgba(31,58,95,.55)"  : HEX.navy; g.stroke();
+      g.restore();
+    }
+
+    if(selKey){
+      const sel = pts.find(p=>p.key === selKey);
+      if(sel) tVLine(g, X(sel.day), 0, CH_H, "rgba(31,58,95,.40)");
+    }
+
+    /* one dot per event, on whichever line is the main one */
+    const main = showSim() ? "sim" : "raw";
+    let prevX = -1e9;
+    pts.forEach(p=>{
+      if(!p.e) return;
+      const x = X(p.day);
+      if(x < GUT - 30 || x > w + 30) return;
+      const at = main === "sim" ? simAt(p.day) : p;
+      tPts.push({ x:x, p:p, at:at });
+      if(x - prevX < 4.5) return;
+      prevX = x;
+      const ring = ((p.e.timing || {}).mode !== "precise");
+      tDot(g, x, Y(at.chaos), HEX.red,  ring);
+      tDot(g, x, Y(at.apr),   HEX.navy, ring);
+    });
+
+    /* where the system's own overshoot events will interrupt */
+    if(showSim()) SYS.fires.forEach(f=>{
+      const x = X(f.day);
+      if(x < GUT - 6 || x > w + 6) return;
+      g.beginPath();
+      g.moveTo(x, CH_T - 9); g.lineTo(x + 3.4, CH_T - 3.5); g.lineTo(x - 3.4, CH_T - 3.5);
+      g.closePath();
+      g.fillStyle = f.high ? HEX.green : HEX.amber; g.fill();
+    });
+
+    /* how much of each event's push is standing outside the band */
+    if(showSim()) pts.forEach(p=>{
+      if(!p.e || !p.r || !(p.r.spent > 0.5)) return;
+      const x = X(p.day);
+      if(x < GUT - 6 || x > w + 6) return;
+      const edge = p.r.landed > p.r.target ? p.r.target + tu.band : p.r.target - tu.band;
+      g.save();
+      g.setLineDash([2,3]); g.strokeStyle = "rgba(138,106,24,.85)"; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(x, Y(p.r.landed)); g.lineTo(x, Y(edge)); g.stroke();
+      g.restore();
+    });
+
+    /* the handles you drag to retune a month */
+    if(curveEdit && sim.length){
+      const cur = tu.curve || [], mw = 30.4 * T.view.px;
+      if(mw >= 7) cur.forEach((v,i)=>{
+        const a = monthStart(i), b = monthStart(i+1);
+        const x = (X(a) + X(b)) / 2;
+        if(x < GUT - 4 || x > w + 4) return;
+        const y = Y(v);
+        g.beginPath(); g.rect(x - 2.5, y - 2.5, 5, 5);
+        g.fillStyle = "#fff"; g.fill();
+        g.strokeStyle = HEX.navy; g.lineWidth = 1.3; g.stroke();
+      });
+    }
+
+    /* the crosshair readout */
+    if(tCursor != null && tCursor > GUT){
+      tVLine(g, tCursor, 0, CH_H, "rgba(20,23,26,.18)");
+    }
+  }
+
+  const rows = spiRows();
+  if(rows){
+    const base = CH_H + 6;
+
+    /* row 0: the tier spirit the system swaps in for you */
+    SYS.tiers.forEach(t=>{
+      const a = X(t.from), b = t.to ? X(t.to) : X(SYS.endDay);
+      if(b < GUT - 10 || a > w + 10) return;
+      const y = base, bh = SPI_ROW - 4;
+      const nm = TIER_COL[t.tier], col = HEX[nm], bg = HEXT[nm];
+      tRound(g, a, y, Math.max(b - a, 3), bh, 3);
+      g.fillStyle = bg; g.fill();
+      g.strokeStyle = col; g.lineWidth = 1; g.stroke();
+      const l = Math.max(a, GUT), r = Math.min(b, w);
+      if(r - l > 26){
+        g.save();
+        g.beginPath(); g.rect(l + 1, y, r - l - 2, bh); g.clip();
+        g.fillStyle = col; g.font = "600 10px " + MONO; g.textAlign = "left";
+        g.fillText("USA_approval_tier_" + t.tier, l + 6, y + bh/2 + .5);
+        g.restore();
+      }
+      tBars.push({ x0:a, x1:b, row:0, tier:t });
+    });
+
+    /* the rest: spirits your own events add and remove */
+    SYS.spans.forEach(sp=>{
+      if(sp.row >= rows) return;
+      const a = X(sp.from), b = sp.to ? X(sp.to) : X(SYS.endDay);
+      if(b < GUT - 10 || a > w + 10) return;
+      const y = base + sp.row*SPI_ROW, bh = SPI_ROW - 4;
+      const nm = laneColor(sp.idea), col = HEX[nm], bg = HEXT[nm];
+      tRound(g, a, y, Math.max(b - a, 3), bh, 3);
+      g.fillStyle = bg; g.fill();
+      g.strokeStyle = col; g.lineWidth = 1; g.stroke();
+      const l = Math.max(a, GUT), r = Math.min(b, w);
+      if(r - l > 26){
+        g.save();
+        g.beginPath(); g.rect(l + 1, y, r - l - 2, bh); g.clip();
+        g.fillStyle = col; g.font = "600 10px " + MONO; g.textAlign = "left";
+        g.fillText(sp.idea, l + 6, y + bh/2 + .5);
+        g.restore();
+      }
+      if(sp.open && b < w + 6){
+        g.beginPath();
+        g.moveTo(b + 2, y + 1); g.lineTo(b + 7, y + bh/2); g.lineTo(b + 2, y + bh - 1);
+        g.fillStyle = col; g.globalAlpha = .55; g.fill(); g.globalAlpha = 1;
+      }
+      tBars.push({ x0:a, x1:b, row:sp.row, sp:sp });
+    });
+  }
+
+  g.restore();
+
+  /* the gutter last, so the lines run under it */
+  g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, GUT, h);
+  tVLine(g, GUT, 0, h, "#DEE1DA");
+  g.fillStyle = "#8A9199"; g.font = "10px " + MONO; g.textAlign = "right";
+  [0, 25, 50, 75, 100].forEach(v=>g.fillText(String(v), GUT - 9, Y(v)));
+  g.textAlign = "left"; g.font = "700 9.5px " + MONO;
+  g.fillStyle = HEX.navy; g.fillRect(10, CH_T - 1, 11, 2); g.fillText("APR", 25, CH_T);
+  g.fillStyle = HEX.red;  g.fillRect(10, CH_T + 12, 11, 2); g.fillText("CHAOS", 25, CH_T + 13);
+  if(sysCfg().band !== false){
+    g.fillStyle = "rgba(31,58,95,.42)"; g.fillRect(10, CH_T + 25, 11, 2);
+    g.fillStyle = "#8A9199"; g.fillText("TREND", 25, CH_T + 26);
+  }
+  if(rows){
+    g.textAlign = "right"; g.fillStyle = "#8A9199";
+    g.fillText("SPIRITS", GUT - 9, CH_H + 6 + (rows*SPI_ROW)/2);
+    if(SYS.rows > rows) g.fillText("+" + (SYS.rows - rows) + " MORE", GUT - 9, CH_H + 6 + rows*SPI_ROW + 4);
+  }
+}
+
+/* ---- the trend curve, as something you can edit ---- */
+let curveEdit = false;
+function armDate(){ return parseDate(sysCfg().startDate) || { y:2025, m:1, d:20 }; }
+function monthIxOf(day){
+  const o = fromDay(day), a = armDate(), n = (tuneCfg().curve || []).length;
+  return clamp((o.y - a.y)*12 + (o.m - a.m), 0, Math.max(n - 1, 0));
+}
+function monthLabel(i){
+  const a = armDate(), m = a.m - 1 + i;
+  return MON[((m % 12) + 12) % 12] + " " + (a.y + Math.floor(m/12));
+}
+function monthStart(i){
+  const a = armDate(), m = a.m - 1 + i;
+  return dayOf({ y:a.y + Math.floor(m/12), m:((m % 12) + 12) % 12 + 1, d:1 });
+}
+function curveSet(mx, my){
+  const tu = tuneCfg();
+  if(!tu.curve || !tu.curve.length) return;
+  const i = monthIxOf(Math.round(dayAt(mx - T.view.x)));
+  const v = clamp(Math.round(100 * (1 - (my - CH_T) / (CH_H - CH_T - CH_B))), 0, 100);
+  if(tu.curve[i] !== v){
+    tu.curve[i] = v;
+    buildSys(); paintTrack(); paintHead();
+  }
+  trackTip(mx, my, monthLabel(i), "target " + tu.curve[i] + "  <span style=\"color:#b9c2cc\">band " + (tu.curve[i]-tuneCfg().band) + "&ndash;" + (tu.curve[i]+tuneCfg().band) + "</span>");
+}
+function curveScript(){
+  const cur = tuneCfg().curve || [];
+  let out = "\tclear_array = usa_apr_target_array\n";
+  cur.forEach((v,i)=>{
+    out += "\tadd_to_array = { array = usa_apr_target_array value = " + v + " }\t# " + monthLabel(i) + "\n";
+  });
+  return out;
+}
+function copyText(text, msg, fname){
+  const fall = ()=>{
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch(e){}
+    ta.remove();
+    if(ok) toast(msg); else download(fname, text, "text/plain");
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(()=>toast(msg), fall);
+  else fall();
+}
+
+/* the modelled value on a given day, for tooltips and dots */
+function simAt(day){
+  const sim = SYS.sim;
+  if(!sim.length) return { apr:SYS.first.apr, chaos:SYS.first.chaos, target:SYS.first.apr };
+  const i = clamp(Math.round(day - sim[0].day), 0, sim.length - 1);
+  return sim[i];
+}
+
+/* ---- pointer ---- */
+function trackTip(mx, my, head, body){
+  tTip.innerHTML = '<b>' + esc(head) + '</b>' + body;
+  tTip.hidden = false;
+  const w = tTip.offsetWidth, h = tTip.offsetHeight;
+  tTip.style.left = clamp(mx - w/2, 6, Math.max(6, tBody.clientWidth - w - 6)) + "px";
+  tTip.style.top  = clamp(my - h - 14, 6, Math.max(6, tBody.clientHeight - h - 6)) + "px";
+}
+function hideTrackTip(){ tTip.hidden = true; if(tCursor != null){ tCursor = null; paintTrack(); } }
+function hitTrack(mx, my){
+  if(mx < GUT) return null;
+  if(my <= CH_H){
+    let best = null, bd = 13;
+    tPts.forEach(t=>{ const d = Math.abs(t.x - mx); if(d < bd){ bd = d; best = t; } });
+    return best ? { kind:"pt", t:best } : { kind:"scan" };
+  }
+  const row = Math.floor((my - (CH_H + 6)) / SPI_ROW);
+  const bar = tBars.find(b=>b.row === row && mx >= b.x0 - 2 && mx <= b.x1 + 2);
+  return bar ? { kind:"bar", b:bar } : null;
+}
+
+let tDrag = null;
+tCv.addEventListener("pointerdown", e=>{
+  if(e.button !== 0) return;
+  const r = tCv.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  if(curveEdit && mx > GUT && my <= CH_H){
+    tDrag = { curve:true, moved:true };
+    tCv.setPointerCapture(e.pointerId);
+    curveSet(mx, my);
+    e.preventDefault();
+    return;
+  }
+  tDrag = { x0:e.clientX, vx:T.view.x, moved:false };
+  tCv.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+tCv.addEventListener("pointermove", e=>{
+  const r = tCv.getBoundingClientRect();
+  if(tDrag && tDrag.curve){ curveSet(e.clientX - r.left, e.clientY - r.top); return; }
+  if(tDrag){
+    const dx = e.clientX - tDrag.x0;
+    if(!tDrag.moved && Math.abs(dx) < 4) return;
+    tDrag.moved = true;
+    hideTrackTip();
+    T.view.x = tDrag.vx + dx;
+    repan();
+    return;
+  }
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const hit = hitTrack(mx, my);
+  if(!hit){ hideTrackTip(); return; }
+
+  if(hit.kind === "pt"){
+    const p = hit.t.p, s = splitText(p.e.text), bits = [];
+    if(p.dl.apr)   bits.push('<span style="color:#9fb4cf">apr</span> ' + sgn(p.dl.apr));
+    if(p.dl.chaos) bits.push('<span style="color:#e0a79e">chaos</span> ' + sgn(p.dl.chaos));
+    const at = hit.t.at;
+    bits.push('&rarr; ' + fmt1(at.apr) + " / " + fmt1(at.chaos));
+    if(showSim() && p.r && p.r.spent > 0.5){
+      bits.push('<span style="color:#e8c46b">' + fmt1(p.r.spent) + ' outside the band, gone in '
+              + Math.ceil(p.r.spent / Math.max(tuneCfg().bleed, 0.01)) + 'd</span>');
+    }
+    if(tCursor !== hit.t.x){ tCursor = hit.t.x; paintTrack(); }
+    trackTip(hit.t.x, my, niceDate(fromDay(p.day)) + "  \u00b7  " + (s.title || "Untitled"), bits.join("&nbsp;&nbsp; "));
+    return;
+  }
+  if(hit.kind === "scan"){
+    const day = Math.round(dayAt(mx - T.view.x));
+    const at = simAt(day);
+    if(tCursor !== mx){ tCursor = mx; paintTrack(); }
+    trackTip(mx, my, niceDate(fromDay(day)),
+      '<span style="color:#9fb4cf">apr</span> ' + fmt1(at.apr)
+      + '&nbsp;&nbsp; <span style="color:#e0a79e">chaos</span> ' + fmt1(at.chaos)
+      + '&nbsp;&nbsp; <span style="color:#b9c2cc">trend</span> ' + fmt1(at.target)
+      + '&nbsp;&nbsp; tier ' + tierAt(at.apr, tuneCfg()));
+    return;
+  }
+  const b = hit.b;
+  const mid = clamp((Math.max(b.x0, GUT) + Math.min(b.x1, tBody.clientWidth))/2, GUT, tBody.clientWidth);
+  if(b.tier){
+    trackTip(mid, my, "USA_approval_tier_" + b.tier.tier,
+      esc(niceDate(fromDay(b.tier.from)) + (b.tier.to ? "  \u2192  " + niceDate(fromDay(b.tier.to)) : "  \u2192  to the end")
+        + "   swapped in by the system"));
+  } else {
+    trackTip(mid, my, b.sp.idea,
+      esc(niceDate(fromDay(b.sp.from)) + (b.sp.to ? "  \u2192  " + niceDate(fromDay(b.sp.to)) : "  \u2192  never removed")));
+  }
+});
+function endTrackDrag(e){
+  if(!tDrag) return;
+  const d = tDrag; tDrag = null;
+  if(d.curve){ saveT(); push(); hideTrackTip(); return; }
+  if(d.moved){ saveT(); return; }
+  const r = tCv.getBoundingClientRect();
+  const hit = hitTrack(e.clientX - r.left, e.clientY - r.top);
+  if(!hit) return;
+  let key = null;
+  if(hit.kind === "pt") key = hit.t.p.key;
+  else if(hit.kind === "bar" && hit.b.sp) key = "ev:" + hit.b.sp.evId;
+  if(!key) return;
+  select(key); focusOn(key); paintTrack();
+}
+tCv.addEventListener("pointerup", endTrackDrag);
+tCv.addEventListener("pointercancel", ()=>{ tDrag = null; });
+tCv.addEventListener("pointerleave", hideTrackTip);
+tCv.addEventListener("dblclick", e=>{
+  const r = tCv.getBoundingClientRect();
+  const hit = hitTrack(e.clientX - r.left, e.clientY - r.top);
+  if(hit && hit.kind === "pt") openEditor(hit.t.p.key);
+});
+tCv.addEventListener("wheel", e=>{
+  e.preventDefault();
+  const r = tCv.getBoundingClientRect();
+  const raw = e.deltaY * (e.deltaMode === 1 ? 16 : 1);
+  zoomAt(e.clientX - r.left, Math.exp(-clamp(raw, -240, 240) * 0.0022));
+  saveSoon();
+}, { passive:false });
+
+/* ---- header controls ---- */
+function trackFields(){
+  const s = sysCfg();
+  $("#tMode").value = lineMode();
+  $("#tShowBand").checked = s.band !== false;
+  $("#tShowSpi").checked = s.spirits !== false;
+}
+function trackRedraw(){ buildSys(); syncTrack(); }
+
+$("#tToggle").onclick = ()=>{ sysCfg().open = trackShut(); saveT(); syncTrack(); };
+$("#tMode").onchange = e=>{ sysCfg().mode = e.target.value; saveT(); syncTrack(); };
+$("#tShowBand").onchange = e=>{ sysCfg().band = e.target.checked; saveT(); paintTrack(); };
+$("#tShowSpi").onchange = e=>{ sysCfg().spirits = e.target.checked; saveT(); syncTrack(); };
+$("#tCurve").onclick = ()=>{
+  curveEdit = !curveEdit;
+  $("#tCurve").classList.toggle("on", curveEdit);
+  tCv.classList.toggle("edit", curveEdit);
+  if(curveEdit && sysCfg().band === false){ sysCfg().band = true; $("#tShowBand").checked = true; saveT(); }
+  if(curveEdit) toast("Drag on the chart to set each month's target. Sweep sideways to draw a slope.");
+  paintTrack();
+};
+
+/* ---- the tuning box ---- */
+function tuneSummary(){
+  const s = sysCfg(), tu = tuneCfg();
+  return "start " + s.aprStart + " / " + s.chaosStart + " on " + s.startDate
+       + "   band " + tu.band + "   pull " + tu.pull + "   bleed " + tu.bleed + "/day"
+       + "   creep cap " + tu.creepCap
+       + "   tiers " + [tu.tier2, tu.tier3, tu.tier4, tu.tier5, tu.tier6].join("/")
+       + "   curve " + (tu.curve || []).length + " months";
+}
+$("#tTune").onclick = ()=>{
+  const s = sysCfg();
+  const box = modal('<div class="modal-h"><h3>Approval system tuning</h3></div><div class="modal-b">'
+    + '<div class="hint">Paste <span class="mono">USA_approval_00_tuning.txt</span> in and the planner reads the band, the '
+    + 'bleed, the creep, the tier thresholds and all of the monthly targets straight out of it. Nothing here touches the mod &mdash; '
+    + 'it only changes what the track draws.</div>'
+    + '<div class="field" style="margin-top:12px"><label>The tuning file</label>'
+    + '<textarea id="tuPaste" rows="7" class="mono" style="font-size:11.5px" placeholder="USA_apr_load_tuning = { ..."></textarea></div>'
+    + '<button class="btn sm" id="tuRead">Read it</button>'
+    + '<div class="row" style="margin-top:14px">'
+    +   '<div class="field"><label>Armed on</label><input class="mono" id="tuFrom" value="'+esc(s.startDate)+'"></div>'
+    +   '<div class="field"><label>Baseline stability %</label><input class="mono" id="tuStab" type="number" min="0" max="100" value="'+esc(String(s.stability == null ? 50 : s.stability))+'"></div>'
+    + '</div>'
+    + '<div class="hint" style="margin:-8px 0 14px">The planner cannot know your stability, so the chaos creep uses this number '
+    + 'plus the stability modifier the system itself applies. Leave it at 50 and the creep comes from approval alone.</div>'
+    + '<div class="field"><label>In use now</label><div class="hint mono" id="tuNow" style="line-height:1.7">'+esc(tuneSummary())+'</div></div>'
+    + '<div class="hint">If you have been dragging the trend around, copy it back out and paste it over '
+    + '<span class="mono">USA_apr_load_curve</span> in the tuning file.</div>'
+    + '</div><div class="modal-f"><button class="btn danger" id="tuReset">Back to defaults</button><div class="spacer"></div>'
+    + '<button class="btn" id="tuCopy">Copy the curve</button>'
+    + '<button class="btn primary" id="tuOk">Done</button></div>', true);
+
+  box.querySelector("#tuCopy").onclick = ()=>copyText(curveScript(), "Curve copied as script", "usa_apr_curve.txt");
+
+  box.querySelector("#tuRead").onclick = ()=>{
+    const got = readTuning(box.querySelector("#tuPaste").value);
+    if(!got){ toast("Could not find any tuning values in that."); return; }
+    const tu = tuneCfg();
+    Object.keys(got).forEach(k=>{
+      if(k === "aprStart") sysCfg().aprStart = got[k];
+      else if(k === "chaosStart") sysCfg().chaosStart = got[k];
+      else tu[k] = got[k];
+    });
+    box.querySelector("#tuNow").textContent = tuneSummary();
+    saveT(); trackRedraw();
+    toast("Read " + Object.keys(got).length + " values" + (got.curve ? " and " + got.curve.length + " months of curve" : ""));
+  };
+  box.querySelector("#tuFrom").onchange = e=>{
+    const d = parseDate(e.target.value);
+    if(!d){ toast("That date does not parse. Try 2025.1.20"); e.target.value = sysCfg().startDate; return; }
+    sysCfg().startDate = modDate(d);
+    e.target.value = sysCfg().startDate;
+    box.querySelector("#tuNow").textContent = tuneSummary();
+    saveT(); trackRedraw();
+  };
+  box.querySelector("#tuStab").oninput = e=>{
+    sysCfg().stability = clamp(Number(e.target.value) || 0, 0, 100);
+    saveSoon(); trackRedraw();
+  };
+  box.querySelector("#tuReset").onclick = ()=>{
+    T.sys = Object.assign(JSON.parse(JSON.stringify(DEF_T.sys)), { open:sysCfg().open, mode:sysCfg().mode, band:sysCfg().band, spirits:sysCfg().spirits });
+    trackFields();
+    box.querySelector("#tuNow").textContent = tuneSummary();
+    box.querySelector("#tuFrom").value = sysCfg().startDate;
+    box.querySelector("#tuStab").value = sysCfg().stability;
+    saveT(); trackRedraw();
+    toast("Back to the tuning file's own numbers");
+  };
+  box.querySelector("#tuOk").onclick = closeModal;
+};
 
 /* ---------------------------------------------------------------------
    16. Wiring
@@ -1822,6 +2794,16 @@ $("#btnHelp").onclick = ()=>{
     + '</div>'
     + '<div class="hint" style="margin-top:16px">Filled dots are precise dates, ringed dots are approximate, '
     + 'diamonds are notes that live only here. Undated triggered-only events wait in the strip below the board.</div>'
+    + '<div class="hint" style="margin-top:10px">The track under the board draws two things. <b>Running total</b> is every '
+    + '<span class="mono">apr_delta</span> and <span class="mono">chaos_delta</span> your events write, added up &mdash; how hard '
+    + 'the story pushes. <b>Modelled</b> runs those same events through the system: the monthly target off the curve, the band '
+    + 'around it, the daily bleed back to its edge and the chaos creep &mdash; what the bar will actually read. Where an event '
+    + 'offers a choice, only the canon option counts; set that in the event\'s editor. The ribbons show the tier spirit the '
+    + 'system swaps in, and any spirit your own events add or remove. Triangles are the overshoot events the system will fire '
+    + 'on its own. Paste <span class="mono">USA_approval_00_tuning.txt</span> into the Tuning box to re-read every knob, and use '
+    + '<b>Edit trend</b> to drag the dashed target line month by month &mdash; sweep sideways to draw a slope, then copy it back out '
+    + 'as script from the same box. An amber tick under an event marks the part of its push that is standing outside the band and '
+    + 'will bleed away again.</div>'
     + '</div><div class="modal-f"><div class="spacer"></div><button class="btn primary" id="ok">Close</button></div>')
     .querySelector("#ok").onclick = closeModal;
 };
@@ -1890,6 +2872,7 @@ $("#srcEv").checked = T.ui.srcEv !== false;
 $("#srcNote").checked = T.ui.srcNote !== false;
 $("#sort").value = T.ui.sort || "date";
 $("#drawer").classList.toggle("shut", T.ui.drawer === false);
+trackFields();
 setPx(T.view.px, true);
 
 rebuild();
