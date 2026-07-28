@@ -1266,7 +1266,7 @@ board.addEventListener("mousedown", e=>{
   if(!node) return;
   e.preventDefault();                      // stop native image drag / text selection
   const f=byId(node.dataset.id); if(!f) return;
-  if(linkMode){ handleLinkClick(f); return; }
+  if(linkMode){ handleLinkClick(f, e.shiftKey); return; }
   if(e.ctrlKey||e.metaKey){ toggleSel(f.id); return; }
   // if the grabbed node is part of a multi-selection, keep it and move the group;
   // otherwise select just this one
@@ -1335,7 +1335,9 @@ function startPan(e){
   function mv(ev){ if(Math.abs(ev.clientX-sx)>3||Math.abs(ev.clientY-sy)>3) moved=true; view.x=ox+(ev.clientX-sx); view.y=oy+(ev.clientY-sy); applyTransform(); }
   function up(){
     document.removeEventListener("mousemove",mv,true); document.removeEventListener("mouseup",up,true); stage.classList.remove("panning");
-    if(!moved && btn===0 && sel.size) deselectAll();   // a plain click on empty canvas clears the selection (undo puts it back)
+    if(moved || btn!==0) return;
+    if(linkMode){ if(linkSrc){ linkSrc=null; render(); } }   // in link mode a plain empty click cancels the pending source
+    else if(sel.size) deselectAll();                         // otherwise it clears the selection (undo puts it back)
   }
   document.addEventListener("mousemove",mv,true); document.addEventListener("mouseup",up,true);
 }
@@ -1343,9 +1345,10 @@ stage.addEventListener("mousedown", e=>{
   if(e.target.closest("#previewBar, .zoombar, .linkbanner, .marquee")) return;   // overlays handle their own clicks
   const onNode=e.target.closest(".node");
   if(e.button===1){ e.preventDefault(); startPan(e); return; }      // middle always pans
-  if(e.button===0 && !onNode && !linkMode){
+  if(e.button===0 && !onNode){
     e.preventDefault();
-    if(P.settings.dragSelect) startMarquee(e);                       // drag-select on: box-select
+    if(linkMode) startPan(e);                                        // link mode: left-drag still pans (a plain click cancels the pending source)
+    else if(P.settings.dragSelect) startMarquee(e);                  // drag-select on: box-select
     else startPan(e);                                                // otherwise pan
   }
 });
@@ -1433,19 +1436,19 @@ function setLinkMode(m){
   $("#bPre").classList.toggle("active", linkMode==="pre");
   $("#bMx").classList.toggle("active", linkMode==="mx");
   const b=$("#linkBanner");
-  if(linkMode==="pre"){ b.className="linkbanner on"; b.textContent="Prerequisite mode — click the PARENT focus, then the CHILD. Esc to stop."; }
-  else if(linkMode==="mx"){ b.className="linkbanner on"; b.textContent="Exclusive mode — click one focus, then the other. Esc to stop."; }
+  if(linkMode==="pre"){ b.className="linkbanner on"; b.textContent="Prerequisite mode — click the PARENT, then the CHILD. Shift+click to chain a line. Drag empty space to pan · Esc to stop."; }
+  else if(linkMode==="mx"){ b.className="linkbanner on"; b.textContent="Exclusive mode — click one focus, then the other. Shift+click to chain. Drag empty space to pan · Esc to stop."; }
   else b.className="linkbanner";
   render();
 }
-function handleLinkClick(f){
+function handleLinkClick(f, chain){
   if(!linkSrc){ linkSrc=f.id; render(); return; }
   if(linkSrc===f.id){ linkSrc=null; render(); return; }
   const src=byId(linkSrc), dst=f;
   if(linkMode==="pre"){
     // src is parent, dst is child -> child requires src
     if((dst.prereq||[]).indexOf(src.id)<0){
-      if(wouldCycle(dst.id, src.id)){ toast("That would make a prerequisite loop."); }
+      if(wouldCycle(dst.id, src.id)){ toast("That would make a prerequisite loop."); linkSrc=chain?dst.id:null; select(dst.id); return; }
       else { dst.prereq.push(src.id); toast(focusName(dst)+" now needs "+focusName(src)); }
     }
   }else if(linkMode==="mx"){
@@ -1454,7 +1457,10 @@ function handleLinkClick(f){
     if(dst.mutex.indexOf(src.id)<0) dst.mutex.push(src.id);
     toast(focusName(src)+" ⇄ "+focusName(dst));
   }
-  linkSrc=null; select(dst.id); render();
+  // Shift+click chains: the target becomes the next source, so click after click
+  // links them in a line. A plain click links once and stops (re-pick a source).
+  linkSrc = chain ? dst.id : null;
+  select(dst.id);
 }
 function focusName(f){ return f.name||focusKey(f); }
 function wouldCycle(childId, newParentId){
