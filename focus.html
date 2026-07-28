@@ -121,11 +121,14 @@ svg.links{position:absolute; inset:0; pointer-events:none; overflow:visible}
   max-height:26px; overflow:hidden; width:100%}
 .node .meta{font-size:9.5px; color:var(--ink2); margin-top:auto; font-family:var(--font-mono)}
 .node .badge{position:absolute; top:-7px; right:-7px; background:var(--gold); color:#fff;
-  font-size:9px; border-radius:8px; padding:1px 5px; display:none}
+  font-size:9px; border-radius:8px; padding:1px 5px; display:none;
+  max-width:96px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .node.hasadv .badge{display:block}
 .node .planbadge{position:absolute; top:-6px; left:-6px; width:12px; height:12px; border-radius:50%;
   background:var(--ok); border:2px solid var(--card); display:none}
 .node.planned .planbadge{display:block}
+.node.external{border-style:dashed; opacity:.7; background:var(--sunk)}
+.node.external .nm{font-style:italic}
 
 .stage-hint{position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);
   text-align:center; color:var(--ink3); font-size:14px; pointer-events:none; width:70%}
@@ -191,7 +194,7 @@ details.adv-sub .adv-body{padding:0 10px 10px}
 .filtergrid label{font-size:12px; display:flex; gap:6px; align-items:center}
 
 /* ---------- picker dropdown ---------- */
-.pick{position:absolute; z-index:200; width:340px; max-width:90vw; background:var(--card);
+.pick{position:absolute; z-index:500; width:340px; max-width:90vw; background:var(--card);
   border:1px solid var(--line2); border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.22); overflow:hidden}
 .pick-top{padding:8px; border-bottom:1px solid var(--line)}
 .pick-top input{width:100%; background:var(--sunk); border:1px solid var(--line); border-radius:var(--r); padding:7px 9px}
@@ -247,6 +250,7 @@ a{color:var(--accent2)}
 <div class="app">
   <!-- ================= TOP BAR ================= -->
   <div class="topbar">
+    <a class="btn ghost sm" href="index.html" title="Back to the roadmap" style="margin-right:2px">← Home</a>
     <div class="brand"><b>Focus Tree Creator</b><span>The American Dream</span></div>
     <div class="field"><label>Mod</label><input class="name" id="mMod" placeholder="The Dream" spellcheck="false"></div>
     <div class="field"><label>Tag</label><input class="tag" id="mTag" maxlength="3" value="USA" spellcheck="false"></div>
@@ -257,6 +261,7 @@ a{color:var(--accent2)}
     <button class="btn" id="bPre" title="Draw a prerequisite: click the parent, then the child">↳ Prerequisite</button>
     <button class="btn" id="bMx" title="Draw a mutually-exclusive link: click one focus, then the other">⇄ Exclusive</button>
     <button class="btn" id="bIdeas">◆ Spirits</button>
+    <button class="btn ghost" id="bImport" title="Import an existing focus tree (.txt) + localisation">Import tree</button>
     <button class="btn ghost" id="bSave" title="Save project file">Save</button>
     <button class="btn ghost" id="bOpen" title="Open project file">Open</button>
     <button class="btn ghost" id="bSettings" title="Settings">⚙</button>
@@ -608,7 +613,8 @@ const SAVE_KEY="hoi4_focus_creator_v1";   // shared with the Story planner
 const SAVE_KEY_OLD="ftc_project_v1";
 function defMeta(){ return { mod:"", tag:"USA", start:"2025.1.1", dpc:7, treeId:"" }; }
 function defSettings(){ return { panelSide:"right", wheel:"zoom", webIcons:true, showGrid:true, showDates:true, theme:"light", aprchaos:false,
-  newFocus:"double", dragSelect:false, bulkCost:true, bulkMutex:true, bulkApr:false, bulkIcon:false }; }
+  newFocus:"double", dragSelect:false, bulkCost:true, bulkMutex:true, bulkApr:false, bulkIcon:false,
+  advLabel:"auto" }; }
 let P = { meta:defMeta(), focuses:[], ideas:[], icons:{}, settings:defSettings() };
 let selId=null, sel=new Set(), view={z:1,x:0,y:0};
 
@@ -620,11 +626,13 @@ function newFocus(x,y){
     reward:"", available:"", aiWillDo:"", selectEffect:"", bypass:"", completeTooltip:"",
     searchFilters:[], willWarWith:"", offX:0, offY:0,
     flags:{ availCap:false, cancelInvalid:false, contInvalid:false, dynamic:false }, allowBranch:"",
-    plan:false, vars:{ aprOn:false, apr:5, chaosOn:false, chaos:5 }
+    plan:false, vars:{ aprOn:false, apr:5, chaosOn:false, chaos:5 },
+    // round-trip preservation for imports
+    extra:"", iconBlock:"", prereqRaw:null, external:false
   };
 }
 function newIdea(){
-  return { id:uid(), key:"", name:"", desc:"", icon:"GFX_goal_unknown", removalCost:-1, mods:[], custom:false };
+  return { id:uid(), key:"", name:"", desc:"", icon:"GFX_goal_unknown", removalCost:-1, mods:[], custom:false, extra:"" };
 }
 function byId(id){ return P.focuses.find(f=>f.id===id); }
 function tag(){ return (P.meta.tag||"USA").toUpperCase().replace(/[^A-Z]/g,"").slice(0,3)||"USA"; }
@@ -730,10 +738,28 @@ function addDays(base,days){
 }
 
 let DATES={};
-function focusHasAdv(f){
+function advBeyondFilters(f){
+  // "advanced" in the labelling sense — everything except search filters and
+  // relative positioning (which is just layout, not an option)
   return !!(f.available||f.aiWillDo||f.selectEffect||f.bypass||f.completeTooltip||
-    (f.searchFilters&&f.searchFilters.length)||f.willWarWith||f.relTo||f.allowBranch||
+    f.willWarWith||f.allowBranch||
     (f.flags&&(f.flags.availCap||f.flags.cancelInvalid||f.flags.contInvalid||f.flags.dynamic)));
+}
+function focusHasAdv(f){ return advBeyondFilters(f) || (f.searchFilters&&f.searchFilters.length>0); }
+const SF_LABELS = (()=>{ const m={}; SEARCH_FILTERS.forEach(([c,l])=>m[c]=l); return m; })();
+function filterNames(f){
+  return (f.searchFilters||[]).map(c=> SF_LABELS[c] || c.replace(/^FOCUS_FILTER_/,"").toLowerCase().replace(/_/g," "));
+}
+/* what to show on the Advanced tab / node badge, per the advLabel setting */
+function advLabelText(f, short){
+  const names=filterNames(f), other=advBeyondFilters(f);
+  const ftxt = names.length ? (short ? names[0].toLowerCase()+(names.length>1?"+"+(names.length-1):"") : names[0]+(names.length>1?" +"+(names.length-1):"")) : "";
+  const adv = short ? "adv" : "Advanced";
+  const mode = P.settings.advLabel || "auto";
+  if(mode==="advanced") return adv;
+  if(mode==="filter")   return ftxt || adv;
+  if(mode==="both")     return ftxt ? (other ? ftxt+(short?" adv":" · Advanced") : ftxt) : adv;
+  /* auto */            return (names.length && !other) ? ftxt : adv;
 }
 
 function render(){
@@ -753,12 +779,12 @@ function render(){
   board.querySelectorAll(".node").forEach(n=>n.remove());
   P.focuses.forEach(f=>{
     const n=document.createElement("div");
-    n.className="node"+(sel.has(f.id)?" sel":"")+(f.id===selId&&sel.size>1?" primary":"")+(focusHasAdv(f)?" hasadv":"")+(linkSrc===f.id?" linksrc":"")+(f.plan?" planned":"");
+    n.className="node"+(sel.has(f.id)?" sel":"")+(f.id===selId&&sel.size>1?" primary":"")+(focusHasAdv(f)?" hasadv":"")+(linkSrc===f.id?" linksrc":"")+(f.plan?" planned":"")+(f.external?" external":"");
     n.dataset.id=f.id;
     n.style.left=cellLeft(f.x)+"px"; n.style.top=cellTop(f.y)+"px";
     const d=DATES[f.id]||{days:0,finish:""};
     n.innerHTML=
-      '<span class="badge">adv</span>'+
+      '<span class="badge">'+esc(advLabelText(f,true))+'</span>'+
       '<span class="planbadge" title="On the story-planner timeline"></span>'+
       '<div class="ic">'+iconHTML(f.icon)+'</div>'+
       '<div class="nm">'+esc(f.name||f.key||"(unnamed)")+'</div>'+
@@ -853,7 +879,7 @@ function renderPanel(){
   $("#pKeyEcho").textContent=focusKey(f);
   $$(".tab").forEach(t=>{
     t.classList.toggle("on", t.dataset.tab===activeTab);
-    if(t.dataset.tab==="adv") t.classList.toggle("hasadv", focusHasAdv(f));
+    if(t.dataset.tab==="adv"){ t.classList.toggle("hasadv", focusHasAdv(f)); t.innerHTML=esc(advLabelText(f,false))+'<span class="dot"></span>'; }
   });
   $("#tabBasic").style.display=activeTab==="basic"?"block":"none";
   $("#tabAdv").style.display=activeTab==="adv"?"block":"none";
@@ -1098,7 +1124,12 @@ function renderAdv(f){
   bindChk("#aCont", v=>{ f.flags.contInvalid=v; markAdvTab(f); });
   bindChk("#aDyn", v=>{ f.flags.dynamic=v; markAdvTab(f); });
 }
-function markAdvTab(f){ const t=$$(".tab").find(x=>x.dataset.tab==="adv"); if(t) t.classList.toggle("hasadv",focusHasAdv(f)); const n=$('.node[data-id="'+f.id+'"]'); if(n) n.classList.toggle("hasadv",focusHasAdv(f)); persist(); }
+function markAdvTab(f){
+  const t=$$(".tab").find(x=>x.dataset.tab==="adv");
+  if(t){ t.classList.toggle("hasadv",focusHasAdv(f)); t.innerHTML=esc(advLabelText(f,false))+'<span class="dot"></span>'; }
+  const n=$('.node[data-id="'+f.id+'"]'); if(n){ n.classList.toggle("hasadv",focusHasAdv(f)); const bd=n.querySelector(".badge"); if(bd) bd.textContent=advLabelText(f,true); }
+  persist();
+}
 function advBlock(key,label,hint,val,isTrig,fxmode){
   const mode=fxmode||(isTrig?"trig":null);
   const btn=mode?'<button class="btn sm" data-advadd="'+key+'" data-mode="'+mode+'">＋ '+(mode==="trig"?"Trigger":"Effect")+'…</button>':'';
@@ -1588,15 +1619,14 @@ function block(name, body, n){ return "\t".repeat(n)+name+" = {\n"+ind(body,n+1)
 
 function buildFocusFile(){
   const T=tag();
-  let maxX=6,maxY=4; P.focuses.forEach(f=>{ maxX=Math.max(maxX,f.x); maxY=Math.max(maxY,f.y); });
-  let s="";
-  s+="focus_tree = {\n";
+  let maxY=4; P.focuses.forEach(f=>{ if(!f.external) maxY=Math.max(maxY,f.y); });
+  let s="focus_tree = {\n";
   s+="\tid = "+treeId()+"\n\n";
-  s+="\tcountry = {\n\t\tfactor = 0\n\t\tmodifier = {\n\t\t\tadd = 100\n\t\t\ttag = "+T+"\n\t\t}\n\t}\n\n";
-  s+="\tdefault = no\n";
-  s+="\treset_on_civilwar = no\n";
-  s+="\tcontinuous_focus_position = { x = 50 y = "+((maxY+3)*100)+" }\n\n";
-  P.focuses.forEach(f=>{ s+=buildFocus(f); });
+  if(P.meta.countryRaw && P.meta.countryRaw.trim()) s+=block("country", P.meta.countryRaw, 1)+"\n";
+  else s+="\tcountry = {\n\t\tfactor = 0\n\t\tmodifier = {\n\t\t\tadd = 100\n\t\t\ttag = "+T+"\n\t\t}\n\t}\n\n";
+  if(P.meta.treeExtra && P.meta.treeExtra.trim()) s+=ind(P.meta.treeExtra,1)+"\n\n";
+  else s+="\tdefault = no\n\treset_on_civilwar = no\n\tcontinuous_focus_position = { x = 50 y = "+((maxY+3)*100)+" }\n\n";
+  P.focuses.forEach(f=>{ if(!f.external) s+=buildFocus(f); });   // placeholders for external refs aren't exported
   s+="}\n";
   return s;
 }
@@ -1605,7 +1635,8 @@ function buildFocus(f){
   let b="";
   b+="\tfocus = {\n";
   b+="\t\tid = "+key+"\n";
-  b+="\t\ticon = "+(f.icon||"GFX_goal_unknown")+"\n";
+  if(f.iconBlock && f.iconBlock.trim()) b+=block("icon", f.iconBlock, 2);
+  else b+="\t\ticon = "+(f.icon||"GFX_goal_unknown")+"\n";
   // if positioned relative to another focus, export coords relative to it so the
   // in-game position matches what you see on the canvas
   let ox=f.x, oy=f.y;
@@ -1616,8 +1647,10 @@ function buildFocus(f){
   }
   b+="\t\tx = "+ox+"\n\t\ty = "+oy+"\n";
   b+="\t\tcost = "+(f.cost||0)+"\n";
-  // prerequisites
-  if(f.prereq && f.prereq.length){
+  // prerequisites — keep the exact imported grouping when it hasn't been edited
+  if(f.prereqRaw && f.prereqRaw.length){
+    f.prereqRaw.forEach(raw=>{ b+="\t\tprerequisite = { "+String(raw).trim().replace(/\s+/g," ")+" }\n"; });
+  } else if(f.prereq && f.prereq.length){
     const valid=f.prereq.map(id=>byId(id)).filter(Boolean);
     if(valid.length){
       if(f.prereqMode==="any"){
@@ -1653,6 +1686,7 @@ function buildFocus(f){
   else b+="\t\tcompletion_reward = { }\n";
   if(f.completeTooltip.trim()) b+=block("complete_tooltip", f.completeTooltip, 2);
   if(f.aiWillDo.trim()) b+=block("ai_will_do", f.aiWillDo, 2);
+  if(f.extra && f.extra.trim()) b+=ind(f.extra,2)+"\n";   // any imported keys we don't model
   b+="\t}\n\n";
   return b;
 }
@@ -1719,9 +1753,11 @@ function buildIdeasFile(){
   P.ideas.forEach(i=>{
     const k=ideaKey(i);
     s+="\t\t"+k+" = {\n";
-    if(usedIcon(i.icon) || (i.icon && i.icon.indexOf("GFX_")===0)) s+="\t\t\tpicture = "+i.icon+"\n";
-    s+="\t\t\tallowed = { always = yes }\n";
+    if(i.icon && i.icon.indexOf("GFX_")===0) s+="\t\t\tpicture = "+i.icon+"\n";
+    const hasExtra=i.extra && i.extra.trim();
+    if(!(hasExtra && /\ballowed\s*=/.test(i.extra))) s+="\t\t\tallowed = { always = yes }\n";
     s+="\t\t\tremoval_cost = "+(i.removalCost==null?-1:i.removalCost)+"\n";
+    if(hasExtra) s+=ind(i.extra,3)+"\n";        // preserved sub-keys from an imported idea
     s+="\t\t\tmodifier = {\n";
     (i.mods||[]).forEach(m=>{ if(m.k) s+="\t\t\t\t"+m.k+" = "+(m.v===""?"0":m.v)+"\n"; });
     s+="\t\t\t}\n";
@@ -1828,6 +1864,7 @@ function openSettings(){
       row("Theme","", seg("theme",[["light","Light"],["dark","Dark"]]))+
       row("Grid","Show the background grid.", seg("showGrid",[[true,"On"],[false,"Off"]]))+
       row("Dates on focuses","Show the days / completion date under each focus.", seg("showDates",[[true,"On"],[false,"Off"]]))+
+      row("Advanced tab label","Auto shows the search-filter name until other advanced options are set (then 'Advanced'). Or force filter-only, Advanced-only, or both.", seg("advLabel",[["auto","Auto"],["filter","Filter"],["advanced","Advanced"],["both","Both"]]))+
       row("Approval & chaos","Per-focus approval/chaos controls that write USA_apr_add / USA_chaos_add and feed the story-planner curve — like the Event Maker.", seg("aprchaos",[[true,"On"],[false,"Off"]]))+
       row("New focus","How to create a focus on the canvas (the ＋ Focus button always works too).", seg("newFocus",[["double","Dbl-click"],["shiftdouble","Shift+dbl"],["key","N key"]]))+
       row("Marquee select","Drag on empty canvas to box-select; panning then uses middle-mouse or the wheel.", seg("dragSelect",[[false,"Off"],[true,"On"]]))+
@@ -1868,6 +1905,211 @@ function openHelp(){
 }
 
 /* =====================================================================
+   14b. Focus tree IMPORT — parse an existing tree / loc / ideas
+   ===================================================================== */
+function stripComments(t){
+  let out="", inq=false;
+  for(let i=0;i<t.length;i++){ const c=t[i];
+    if(inq){ out+=c; if(c==="\\"){ out+=(t[i+1]||""); i++; } else if(c==='"') inq=false; continue; }
+    if(c==='"'){ inq=true; out+=c; continue; }
+    if(c==="#"){ while(i<t.length && t[i]!=="\n") i++; out+="\n"; continue; }
+    out+=c;
+  }
+  return out;
+}
+/* one level of `key op value | { block }` entries; repeated keys kept */
+function pdxEntries(text){
+  const out=[]; let i=0; const n=text.length;
+  const ws=c=>c===" "||c==="\t"||c==="\r"||c==="\n";
+  function skip(){ while(i<n && ws(text[i])) i++; }
+  function token(){
+    skip(); if(i>=n) return null;
+    if(text[i]==='"'){ let s=""; i++; while(i<n && text[i]!=='"'){ if(text[i]==="\\"){ s+=text[i+1]||""; i+=2; } else { s+=text[i]; i++; } } i++; return '"'+s+'"'; }
+    let j=i; while(j<n && !ws(text[j]) && "={}<>".indexOf(text[j])<0) j++;
+    if(j===i) return null;
+    const w=text.slice(i,j); i=j; return w;
+  }
+  while(true){
+    skip(); if(i>=n) break;
+    if(text[i]==="}"){ i++; continue; }
+    const key=token(); if(key==null) break;
+    skip();
+    let op="="; if(text[i]==="="||text[i]==="<"||text[i]===">"){ op=text[i]; i++; if(text[i]==="="){ op+="="; i++; } }
+    skip();
+    if(text[i]==="{"){
+      let depth=0, j=i, inq=false;
+      for(; j<n; j++){ const c=text[j];
+        if(inq){ if(c==="\\"){ j++; continue; } if(c==='"') inq=false; }
+        else { if(c==='"') inq=true; else if(c==="{") depth++; else if(c==="}"){ depth--; if(depth===0){ j++; break; } } }
+      }
+      out.push({ key, op, block:text.slice(i+1, j-1) }); i=j;
+    } else { const v=token(); out.push({ key, op, value:(v==null?"":v) }); }
+  }
+  return out;
+}
+function focusKeysIn(block){
+  const out=[], rx=/focus\s*=\s*([A-Za-z0-9_.]+)/g; let m;
+  while((m=rx.exec(block))) out.push(m[1]);
+  return out;
+}
+function parseFocus(block){
+  const f=newFocus(0,0);
+  f._pre=[]; f._mx=[]; f._rel=""; f.prereqRaw=[];
+  const extra=[];
+  pdxEntries(block).forEach(e=>{
+    const k=e.key;
+    if(k==="id"){ f.key=e.value; f.keyEdited=true; return; }
+    if(k==="icon"){ if(e.block!=null){ f.iconBlock=e.block.trim(); const m=/value\s*=\s*([A-Za-z0-9_]+)/.exec(e.block)||/([A-Za-z0-9_]*GFX_[A-Za-z0-9_]+)/.exec(e.block); f.icon=m?m[1]:"GFX_goal_unknown"; } else f.icon=e.value; return; }
+    if(k==="x"){ f.x=parseInt(e.value,10)||0; return; }
+    if(k==="y"){ f.y=parseInt(e.value,10)||0; return; }
+    if(k==="cost"){ f.cost=parseFloat(e.value)||0; return; }
+    if(k==="relative_position_id"){ f._rel=e.value; return; }
+    if(k==="prerequisite" && e.block!=null){ f.prereqRaw.push(e.block.trim().replace(/\s+/g," ")); f._pre.push(focusKeysIn(e.block)); return; }
+    if(k==="mutually_exclusive" && e.block!=null){ focusKeysIn(e.block).forEach(x=>f._mx.push(x)); return; }
+    if(k==="search_filters" && e.block!=null){ f.searchFilters=(e.block.match(/FOCUS_FILTER_[A-Z_0-9]+/g)||[]); return; }
+    if(k==="available" && e.block!=null){ f.available=e.block.trim(); return; }
+    if(k==="bypass" && e.block!=null){ f.bypass=e.block.trim(); return; }
+    if(k==="select_effect" && e.block!=null){ f.selectEffect=e.block.trim(); return; }
+    if(k==="completion_reward" && e.block!=null){ f.reward=e.block.trim(); return; }
+    if(k==="complete_tooltip" && e.block!=null){ f.completeTooltip=e.block.trim(); return; }
+    if(k==="ai_will_do" && e.block!=null){ f.aiWillDo=e.block.trim(); return; }
+    if(k==="allow_branch" && e.block!=null){ f.allowBranch=e.block.trim(); return; }
+    if(k==="will_lead_to_war_with"){ f.willWarWith=e.value; return; }
+    if(k==="available_if_capitulated"){ f.flags.availCap=(e.value==="yes"); return; }
+    if(k==="cancel_if_invalid"){ f.flags.cancelInvalid=(e.value==="yes"); return; }
+    if(k==="continue_if_invalid"){ f.flags.contInvalid=(e.value==="yes"); return; }
+    if(k==="dynamic"){ f.flags.dynamic=(e.value==="yes"); return; }
+    if(e.block!=null) extra.push(k+" = {"+e.block+"}"); else extra.push(k+" "+e.op+" "+e.value);
+  });
+  f.extra=extra.join("\n");
+  if(!f.prereqRaw.length) f.prereqRaw=null;
+  return f;
+}
+function parseFocusTree(text){
+  const top=pdxEntries(stripComments(text));
+  const ft=top.find(e=>e.key==="focus_tree" && e.block!=null);
+  const inner = ft ? pdxEntries(ft.block) : top;
+  const out={ treeId:"", tag:"", countryRaw:"", treeExtra:[], focuses:[] };
+  inner.forEach(e=>{
+    if(e.key==="focus" && e.block!=null){ out.focuses.push(parseFocus(e.block)); return; }
+    if(e.key==="id" && !e.block){ out.treeId=e.value; return; }
+    if(e.key==="country" && e.block!=null){ out.countryRaw=e.block.replace(/^\s*\n/,"").replace(/\s+$/,""); const m=/tag\s*=\s*([A-Za-z0-9_]+)/.exec(e.block); if(m) out.tag=m[1]; return; }
+    if(e.block!=null) out.treeExtra.push(e.key+" = {"+e.block+"}"); else out.treeExtra.push(e.key+" "+e.op+" "+e.value);
+  });
+  out.treeExtra=out.treeExtra.join("\n");
+  return out;
+}
+function parseLoc(text){
+  const map={};
+  String(text).split(/\r?\n/).forEach(line=>{
+    const m=/^\s*([A-Za-z0-9_.@$]+):\s*\d*\s*"([\s\S]*)"\s*$/.exec(line);
+    if(m) map[m[1]]=m[2].replace(/\\"/g,'"').replace(/\\n/g,"\n");
+  });
+  return map;
+}
+function parseIdeas(text){
+  const top=pdxEntries(stripComments(text));
+  const ie=top.find(e=>e.key==="ideas" && e.block!=null); if(!ie) return [];
+  const out=[];
+  pdxEntries(ie.block).forEach(cat=>{
+    if(cat.key!=="country" || cat.block==null) return;   // focus spirits live in country scope
+    pdxEntries(cat.block).forEach(en=>{
+      if(en.block==null) return;
+      const idea=newIdea(); idea.key=en.key; const extra=[];
+      pdxEntries(en.block).forEach(e=>{
+        if(e.key==="picture"){ idea.icon=e.value; return; }
+        if(e.key==="removal_cost"){ idea.removalCost=parseFloat(e.value); return; }
+        if(e.key==="modifier" && e.block!=null){ pdxEntries(e.block).forEach(m=>{ if(m.value!=null && m.block==null) idea.mods.push({k:m.key, v:m.value}); }); return; }
+        if(e.block!=null) extra.push(e.key+" = {"+e.block+"}"); else extra.push(e.key+" "+e.op+" "+e.value);
+      });
+      idea.extra=extra.join("\n");
+      out.push(idea);
+    });
+  });
+  return out;
+}
+function doImport(focusText, locText, ideasText, mode){
+  const parsed=parseFocusTree(focusText);
+  if(!parsed.focuses.length) throw new Error("no focuses found in that file");
+  const loc=locText?parseLoc(locText):{};
+  const ideas=ideasText?parseIdeas(ideasText):[];
+  ideas.forEach(i=>{ if(loc[i.key]) i.name=loc[i.key]; if(loc[i.key+"_desc"]) i.desc=loc[i.key+"_desc"]; });
+  const focuses=parsed.focuses, keymap={};
+  focuses.forEach(f=>{ f.id=uid(); keymap[f.key]=f; if(loc[f.key]) f.name=loc[f.key]; if(loc[f.key+"_desc"]) f.desc=loc[f.key+"_desc"]; });
+  let placeholders=0;
+  function ensure(key){
+    if(keymap[key]) return keymap[key];
+    const ph=newFocus(0,0); ph.id=uid(); ph.key=key; ph.keyEdited=true; ph.external=true; ph.name=loc[key]||key; ph.cost=0;
+    keymap[key]=ph; focuses.push(ph); placeholders++; return ph;
+  }
+  focuses.forEach(f=>{
+    if(f.external) return;
+    (f._pre||[]).forEach(group=>group.forEach(k=>{ const t=ensure(k); if(f.prereq.indexOf(t.id)<0) f.prereq.push(t.id); }));
+    (f._mx||[]).forEach(k=>{ const t=ensure(k); if(f.mutex.indexOf(t.id)<0) f.mutex.push(t.id); if(t.mutex.indexOf(f.id)<0) t.mutex.push(f.id); });
+    if(f._rel){ f.relTo = keymap[f._rel] ? keymap[f._rel].id : ""; }
+  });
+  // absolute positions from relative_position_id chains
+  const pm={};
+  function absPos(f, st){
+    if(pm[f.id]) return pm[f.id];
+    if(st.has(f.id)) return {x:f.x,y:f.y};
+    st.add(f.id);
+    let p={x:f.x,y:f.y};
+    if(f.relTo){ const rel=focuses.find(z=>z.id===f.relTo); if(rel){ const rp=absPos(rel,st); p={x:rp.x+f.x, y:rp.y+f.y}; } }
+    st.delete(f.id); pm[f.id]=p; return p;
+  }
+  focuses.forEach(f=>{ if(!f.external){ const p=absPos(f,new Set()); f._ax=p.x; f._ay=p.y; } });
+  focuses.forEach(f=>{ if(f.external){ const ref=focuses.find(z=>!z.external && (z.prereq.indexOf(f.id)>=0||z.mutex.indexOf(f.id)>=0)); f._ax=ref?ref._ax:0; f._ay=ref?(ref._ay-1):0; } });
+  let minX=Infinity,minY=Infinity; focuses.forEach(f=>{ minX=Math.min(minX,f._ax); minY=Math.min(minY,f._ay); });
+  if(!isFinite(minX)){ minX=0; minY=0; }
+  focuses.forEach(f=>{ f.x=f._ax-minX; f.y=f._ay-minY; ["_ax","_ay","_pre","_mx","_rel"].forEach(k=>delete f[k]); });
+
+  if(mode==="merge" && P.focuses.length){
+    let mx=0; P.focuses.forEach(f=>mx=Math.max(mx,f.x)); mx+=3;
+    focuses.forEach(f=>f.x+=mx);
+    P.focuses=P.focuses.concat(focuses); P.ideas=P.ideas.concat(ideas);
+  } else {
+    P.focuses=focuses; P.ideas=ideas;
+    if(parsed.tag) P.meta.tag=parsed.tag;
+    if(parsed.treeId) P.meta.treeId=parsed.treeId;
+    P.meta.countryRaw=parsed.countryRaw||""; P.meta.treeExtra=parsed.treeExtra||"";
+  }
+  selId=null; sel=new Set();
+  applySettings(); syncTopbar(); render(); renderPanel(); fitView(); pushHist();
+  toast("Imported "+focuses.filter(f=>!f.external).length+" focuses"+(placeholders?" · "+placeholders+" external":"")+(ideas.length?" · "+ideas.length+" spirits":""));
+}
+function openImport(){
+  const veil=document.createElement("div"); veil.className="veil"; veil.id="impVeil";
+  const hasWork=P.focuses.length>0;
+  veil.innerHTML='<div class="modal" style="width:560px"><div class="modal-h"><h3>Import focus tree</h3></div>'+
+    '<div class="modal-b">'+
+      '<div class="fld"><label>Focus tree file (.txt) — required</label><input type="file" id="impFocus" accept=".txt,text/plain" class="inp"></div>'+
+      '<div class="fld"><label>Localisation (.yml) — optional</label><input type="file" id="impLoc" accept=".yml,.txt" class="inp"></div>'+
+      '<div class="fld"><label>Ideas / national spirits (.txt) — optional</label><input type="file" id="impIdeas" accept=".txt,text/plain" class="inp"></div>'+
+      (hasWork?'<div class="fld"><label>You already have '+P.focuses.length+' focuses here</label><span class="seg"><button id="impRep" class="on">Replace</button><button id="impMerge">Merge / append</button></span></div>':'')+
+      '<div class="hint">Icons use real vanilla art when the sprite name is known, otherwise the name. Focuses referenced from other files (shared focuses) become light placeholder nodes you can delete. The exact script is kept so you can re-export.</div>'+
+    '</div><div class="modal-f"><button class="btn" id="impCancel">Cancel</button><button class="btn primary" id="impGo">Import</button></div></div>';
+  document.body.appendChild(veil);
+  let mode="replace";
+  veil.onclick=e=>{ if(e.target===veil) veil.remove(); };
+  $("#impCancel").onclick=()=>veil.remove();
+  if(hasWork){
+    $("#impRep").onclick=()=>{ mode="replace"; $("#impRep").classList.add("on"); $("#impMerge").classList.remove("on"); };
+    $("#impMerge").onclick=()=>{ mode="merge"; $("#impMerge").classList.add("on"); $("#impRep").classList.remove("on"); };
+  }
+  $("#impGo").onclick=async()=>{
+    const ff=$("#impFocus").files[0]; if(!ff){ toast("Choose a focus tree .txt file first."); return; }
+    try{
+      const focusText=await ff.text();
+      const lf=$("#impLoc").files[0], idf=$("#impIdeas").files[0];
+      const locText=lf?await lf.text():"", ideasText=idf?await idf.text():"";
+      doImport(focusText, locText, ideasText, mode);
+      veil.remove();
+    }catch(err){ toast("Import failed: "+err.message); }
+  };
+}
+
+/* =====================================================================
    15. Wire up + init
    ===================================================================== */
 function addFocusAt(px, py){
@@ -1905,6 +2147,7 @@ $("#bPre").onclick=()=>setLinkMode("pre");
 $("#bMx").onclick=()=>setLinkMode("mx");
 $("#bIdeas").onclick=openIdeas;
 $("#bExport").onclick=()=>exportAll(false);
+$("#bImport").onclick=openImport;
 $("#bSave").onclick=saveProject;
 $("#bOpen").onclick=()=>$("#fileProj").click();
 $("#bSettings").onclick=openSettings;
