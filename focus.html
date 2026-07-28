@@ -100,11 +100,22 @@ svg.links{position:absolute; inset:0; pointer-events:none; overflow:visible}
 }
 .node:hover{border-color:var(--accent2)}
 .node.sel{border-color:var(--accent); box-shadow:0 0 0 2px rgba(31,58,95,.25)}
+.node.primary{box-shadow:0 0 0 3px rgba(31,58,95,.45)}
+.marquee{position:absolute; z-index:55; border:1.5px solid var(--accent); background:rgba(31,58,95,.12); border-radius:2px; pointer-events:none}
+.mstats{display:flex; flex-direction:column; margin-bottom:6px}
+.mstat{display:flex; justify-content:space-between; gap:10px; padding:6px 9px; border:1px solid var(--line); border-top:none; font-size:13px}
+.mstat:first-child{border-top:1px solid var(--line); border-radius:var(--r) var(--r) 0 0}
+.mstat:last-child{border-radius:0 0 var(--r) var(--r)}
+.mstat span{color:var(--ink2)}
+.mstat b{font-family:var(--font-mono)}
+.mstat b.pos{color:var(--ok)} .mstat b.neg{color:var(--bad)}
 .node.linksrc{border-color:var(--gold); box-shadow:0 0 0 2px rgba(138,106,24,.35)}
 .node.dragging{cursor:grabbing; opacity:.9; z-index:50}
 .node .ic{width:48px; height:48px; display:flex; align-items:center; justify-content:center;
   background:var(--sunk); border-radius:6px; overflow:hidden; flex:0 0 auto}
-.node .ic img{width:100%; height:100%; object-fit:contain; image-rendering:auto}
+.node .ic img{width:100%; height:100%; object-fit:contain; image-rendering:auto;
+  -webkit-user-drag:none; user-drag:none; pointer-events:none; user-select:none}
+.node, .node *{ -webkit-user-drag:none; user-drag:none }
 .node .ic .ph{font-size:9px; color:var(--ink3); text-align:center; line-height:1.1; padding:2px; word-break:break-all}
 .node .nm{font-size:11px; font-weight:600; text-align:center; margin-top:3px; line-height:1.12;
   max-height:26px; overflow:hidden; width:100%}
@@ -291,6 +302,14 @@ a{color:var(--accent2)}
         </div>
         <div class="panel-scroll" id="tabBasic"></div>
         <div class="panel-scroll" id="tabAdv" style="display:none"></div>
+      </div>
+      <div id="panelMulti" style="display:none; flex:1 1 auto; min-height:0; flex-direction:column">
+        <div class="panel-head">
+          <span class="ptitle" id="pmTitle">Selection</span>
+          <div class="spacer"></div>
+          <button class="btn sm danger" id="pmDel" title="Delete all selected">Delete all</button>
+        </div>
+        <div class="panel-scroll" id="tabMulti"></div>
       </div>
     </div>
   </div>
@@ -588,9 +607,10 @@ const SEARCH_FILTERS=[
 const SAVE_KEY="hoi4_focus_creator_v1";   // shared with the Story planner
 const SAVE_KEY_OLD="ftc_project_v1";
 function defMeta(){ return { mod:"", tag:"USA", start:"2025.1.1", dpc:7, treeId:"" }; }
-function defSettings(){ return { panelSide:"right", wheel:"zoom", webIcons:true, showGrid:true, showDates:true, theme:"light", aprchaos:false }; }
+function defSettings(){ return { panelSide:"right", wheel:"zoom", webIcons:true, showGrid:true, showDates:true, theme:"light", aprchaos:false,
+  newFocus:"double", dragSelect:false, bulkCost:true, bulkMutex:true, bulkApr:false, bulkIcon:false }; }
 let P = { meta:defMeta(), focuses:[], ideas:[], icons:{}, settings:defSettings() };
-let selId=null, view={z:1,x:0,y:0};
+let selId=null, sel=new Set(), view={z:1,x:0,y:0};
 
 function newFocus(x,y){
   return {
@@ -610,7 +630,30 @@ function byId(id){ return P.focuses.find(f=>f.id===id); }
 function tag(){ return (P.meta.tag||"USA").toUpperCase().replace(/[^A-Z]/g,"").slice(0,3)||"USA"; }
 function treeId(){ return P.meta.treeId && P.meta.treeId.trim() ? P.meta.treeId.trim() : tag().toLowerCase()+"_focus_dream"; }
 
-function persist(){ try{ store.set(SAVE_KEY, JSON.stringify(P)); }catch(e){} }
+function persist(){ try{ store.set(SAVE_KEY, JSON.stringify(P)); }catch(e){} if(!restoring) pushHistSoon(); }
+
+/* ---- undo / redo: snapshots hooked into every autosave ---- */
+let hist=[], hp=-1, histTimer=null, restoring=false;
+function pushHist(){
+  const snap=JSON.stringify(P);
+  if(hp>=0 && hist[hp]===snap) return;          // nothing changed
+  hist=hist.slice(0,hp+1); hist.push(snap); hp=hist.length-1;
+  if(hist.length>80){ hist.shift(); hp--; }
+}
+function pushHistSoon(){ clearTimeout(histTimer); histTimer=setTimeout(()=>{ histTimer=null; pushHist(); }, 400); }
+function flushHist(){ if(histTimer){ clearTimeout(histTimer); histTimer=null; pushHist(); } }
+function restoreHist(snap){
+  restoring=true;
+  const keep=selId;
+  P=normalize(JSON.parse(snap));
+  selId=P.focuses.some(f=>f.id===keep)?keep:null;
+  sel=selId?new Set([selId]):new Set();
+  try{ store.set(SAVE_KEY, JSON.stringify(P)); }catch(e){}
+  applySettings(); syncTopbar(); render(); renderPanel();
+  restoring=false;
+}
+function undo(){ flushHist(); if(hp>0){ hp--; restoreHist(hist[hp]); toast("Undo"); } else toast("Nothing to undo"); }
+function redo(){ if(hp<hist.length-1){ hp++; restoreHist(hist[hp]); toast("Redo"); } else toast("Nothing to redo"); }
 function loadSaved(){
   const raw=store.get(SAVE_KEY) || store.get(SAVE_KEY_OLD); if(!raw) return false;
   try{
@@ -710,7 +753,7 @@ function render(){
   board.querySelectorAll(".node").forEach(n=>n.remove());
   P.focuses.forEach(f=>{
     const n=document.createElement("div");
-    n.className="node"+(f.id===selId?" sel":"")+(focusHasAdv(f)?" hasadv":"")+(linkSrc===f.id?" linksrc":"")+(f.plan?" planned":"");
+    n.className="node"+(sel.has(f.id)?" sel":"")+(f.id===selId&&sel.size>1?" primary":"")+(focusHasAdv(f)?" hasadv":"")+(linkSrc===f.id?" linksrc":"")+(f.plan?" planned":"");
     n.dataset.id=f.id;
     n.style.left=cellLeft(f.x)+"px"; n.style.top=cellTop(f.y)+"px";
     const d=DATES[f.id]||{days:0,finish:""};
@@ -794,8 +837,16 @@ function syncTopbar(){
    6. Selection & side panel
    ===================================================================== */
 let activeTab="basic";
-function select(id){ selId=id; renderPanel(); render(); }
+function select(id){ sel=new Set(id?[id]:[]); selId=id||null; renderPanel(); render(); }
+function toggleSel(id){
+  if(sel.has(id)){ sel.delete(id); if(selId===id) selId=[...sel].pop()||null; }
+  else { sel.add(id); selId=id; }
+  renderPanel(); render();
+}
 function renderPanel(){
+  const pm=$("#panelMulti");
+  if(sel.size>1){ $("#panelEmpty").style.display="none"; $("#panelBody").style.display="none"; pm.style.display="flex"; renderMulti(); return; }
+  pm.style.display="none";
   const f=byId(selId);
   if(!f){ $("#panelEmpty").style.display="block"; $("#panelBody").style.display="none"; return; }
   $("#panelEmpty").style.display="none"; $("#panelBody").style.display="flex";
@@ -894,6 +945,75 @@ function aprChaosHTML(f){
     '<div class="hint">Writes <span class="mono">set_temp_variable = { apr_delta = N }</span> + <span class="mono">USA_apr_add</span> (and chaos) into the reward, and feeds the story-planner curve — exactly like events.</div></div>';
 }
 function markPlanNode(f){ const n=$('.node[data-id="'+f.id+'"]'); if(n) n.classList.toggle("planned", !!f.plan); persist(); }
+
+/* =====================================================================
+   6b. Multi-select panel — smart auto-sum + bulk edit
+   ===================================================================== */
+const STAT_FX = [
+  ["add_political_power","Political power"], ["add_stability","Stability"],
+  ["add_war_support","War support"], ["add_manpower","Manpower"],
+  ["add_command_power","Command power"], ["army_experience","Army XP"],
+  ["navy_experience","Navy XP"], ["air_experience","Air XP"],
+  ["add_research_slot","Research slots"]
+];
+function sumEffect(text, name){
+  const rx=new RegExp("(?:^|[^A-Za-z0-9_])"+name+"\\s*=\\s*(-?\\d+(?:\\.\\d+)?)","g");
+  let m,n=0,hit=false; while((m=rx.exec(String(text||"")))){ n+=parseFloat(m[1]); hit=true; }
+  return hit?n:null;
+}
+function fmtNum(n){ return (Math.round(n*1000)/1000).toString(); }
+function renderMulti(){
+  const ids=[...sel], fs=ids.map(byId).filter(Boolean);
+  $("#pmTitle").textContent=fs.length+" focuses selected";
+  const dpc=Math.max(1,P.meta.dpc||7);
+  let totalCost=0, minTot=Infinity, maxTot=-Infinity, minStr="", maxStr="", apr=0, chaos=0, aprN=0, chaosN=0;
+  const stats={};
+  fs.forEach(f=>{
+    totalCost+=(f.cost||0);
+    const d=DATES[f.id];
+    if(d){ if(d.total<minTot){minTot=d.total; minStr=d.finish;} if(d.total>maxTot){maxTot=d.total; maxStr=d.finish;} }
+    if(P.settings.aprchaos && f.vars){ if(f.vars.aprOn){apr+=Number(f.vars.apr)||0; aprN++;} if(f.vars.chaosOn){chaos+=Number(f.vars.chaos)||0; chaosN++;} }
+    STAT_FX.forEach(([k])=>{ const v=sumEffect(f.reward,k); if(v!=null) stats[k]=(stats[k]||0)+v; });
+  });
+  let rows='<div class="mstat"><span>Focuses</span><b>'+fs.length+'</b></div>'+
+    '<div class="mstat"><span>Total cost</span><b>'+totalCost+' pts · '+(totalCost*dpc)+' days</b></div>';
+  if(minStr) rows+='<div class="mstat"><span>Completes</span><b>'+esc(minStr)+(minStr!==maxStr?" → "+esc(maxStr):"")+'</b></div>';
+  if(P.settings.aprchaos && aprN) rows+='<div class="mstat"><span>Approval Δ</span><b class="'+(apr>=0?"pos":"neg")+'">'+(apr>=0?"+":"")+fmtNum(apr)+'</b></div>';
+  if(P.settings.aprchaos && chaosN) rows+='<div class="mstat"><span>Chaos Δ</span><b class="'+(chaos<=0?"pos":"neg")+'">'+(chaos>=0?"+":"")+fmtNum(chaos)+'</b></div>';
+  STAT_FX.forEach(([k,label])=>{ if(stats[k]) rows+='<div class="mstat"><span>'+esc(label)+'</span><b>'+(stats[k]>0?"+":"")+fmtNum(stats[k])+'</b></div>'; });
+
+  const plannedAll=fs.length&&fs.every(f=>f.plan), plannedNone=fs.every(f=>!f.plan);
+  let bulk='<div class="fld"><label>Show on the story-planner timeline</label>'+
+    '<div class="inline"><button class="btn sm" id="bmPlanOn">Add all</button><button class="btn sm" id="bmPlanOff">Remove all</button>'+
+    '<span class="mini">'+(plannedAll?"all shown":plannedNone?"none":"mixed")+'</span></div></div>'+
+    '<div class="fld"><label>Search filters (applied to all)</label><div class="filtergrid">'+
+      SEARCH_FILTERS.map(sf=>{ const cnt=fs.filter(f=>(f.searchFilters||[]).indexOf(sf[0])>=0).length;
+        return '<label><input type="checkbox" data-bsf="'+sf[0]+'"'+(cnt===fs.length&&cnt?" checked":"")+'>'+esc(sf[1])+'</label>'; }).join("")+
+    '</div></div>';
+  if(P.settings.bulkCost) bulk+='<div class="fld"><label>Cost</label><div class="inline"><input class="inp mono" id="bmCostN" style="width:70px; flex:0 0 auto" placeholder="pts"><button class="btn sm" id="bmCost">Apply to all</button></div></div>';
+  if(P.settings.bulkMutex) bulk+='<div class="fld"><label>Mutually exclusive</label><div class="inline"><button class="btn sm" id="bmMx">Make these a group</button><button class="btn sm" id="bmMxClear">Clear</button></div><div class="hint">Makes every selected focus exclusive with the others — a branch choice.</div></div>';
+  if(P.settings.bulkApr && P.settings.aprchaos) bulk+='<div class="fld"><label>Approval &amp; chaos (all)</label><div class="inline"><span class="mini">apr</span><input class="inp mono" id="bmApr" style="width:52px; flex:0 0 auto"><span class="mini">chaos</span><input class="inp mono" id="bmChaos" style="width:52px; flex:0 0 auto"><button class="btn sm" id="bmVars">Apply</button></div></div>';
+  if(P.settings.bulkIcon) bulk+='<div class="fld"><label>Icon</label><button class="btn sm" id="bmIcon">Set icon for all…</button></div>';
+
+  $("#tabMulti").innerHTML='<div class="mstats">'+rows+'</div>'+bulk+
+    '<div class="hint" style="margin-top:8px">Ctrl-click to add / remove. Drag any selected focus to move the whole group.</div>';
+
+  $("#bmPlanOn").onclick=()=>{ fs.forEach(f=>f.plan=true); persist(); render(); renderMulti(); };
+  $("#bmPlanOff").onclick=()=>{ fs.forEach(f=>f.plan=false); persist(); render(); renderMulti(); };
+  $("#tabMulti").querySelectorAll("[data-bsf]").forEach(cb=>{
+    const sf=cb.dataset.bsf, cnt=fs.filter(f=>(f.searchFilters||[]).indexOf(sf)>=0).length;
+    if(cnt>0 && cnt<fs.length) cb.indeterminate=true;
+    cb.onchange=()=>{ fs.forEach(f=>{ f.searchFilters=f.searchFilters||[]; const i=f.searchFilters.indexOf(sf);
+      if(cb.checked){ if(i<0) f.searchFilters.push(sf); } else if(i>=0) f.searchFilters.splice(i,1); });
+      persist(); render(); renderMulti(); };
+  });
+  const q=s=>$("#tabMulti "+s)||$(s);
+  if($("#bmCost")) $("#bmCost").onclick=()=>{ const v=clampInt($("#bmCostN").value,0,1000,null); if(v==null){toast("Enter a cost.");return;} fs.forEach(f=>f.cost=v); persist(); render(); renderMulti(); };
+  if($("#bmMx")) $("#bmMx").onclick=()=>{ fs.forEach(f=>{ f.mutex=f.mutex||[]; fs.forEach(o=>{ if(o!==f && f.mutex.indexOf(o.id)<0) f.mutex.push(o.id); }); }); persist(); render(); renderMulti(); toast("Made mutually exclusive"); };
+  if($("#bmMxClear")) $("#bmMxClear").onclick=()=>{ const set=new Set(ids); fs.forEach(f=>{ f.mutex=(f.mutex||[]).filter(m=>!set.has(m)); }); persist(); render(); renderMulti(); };
+  if($("#bmVars")) $("#bmVars").onclick=()=>{ const a=$("#bmApr").value, c=$("#bmChaos").value; fs.forEach(f=>{ f.vars=f.vars||{aprOn:false,apr:5,chaosOn:false,chaos:5}; if(a!==""){f.vars.aprOn=true; f.vars.apr=Number(a)||0;} if(c!==""){f.vars.chaosOn=true; f.vars.chaos=Number(c)||0;} }); persist(); render(); renderMulti(); };
+  if($("#bmIcon")) $("#bmIcon").onclick=()=>openIconPicker(name=>{ fs.forEach(f=>f.icon=name); persist(); render(); renderMulti(); });
+}
 
 function refreshDerived(f){
   DATES=computeDates(); const d=DATES[f.id]||{days:0,total:0,finish:""};
@@ -1005,15 +1125,28 @@ board.addEventListener("mousedown", e=>{
   if(e.button!==0) return;                 // let middle/right pass through to panning
   const node=e.target.closest(".node");
   if(!node) return;
+  e.preventDefault();                      // stop native image drag / text selection
   const f=byId(node.dataset.id); if(!f) return;
-  if(linkMode){ e.preventDefault(); handleLinkClick(f); return; }
-  // select without rebuilding the board, so the node we grabbed stays attached
-  selId=f.id; highlightSelection(); renderPanel();
+  if(linkMode){ handleLinkClick(f); return; }
+  if(e.ctrlKey||e.metaKey){ toggleSel(f.id); return; }
+  // if the grabbed node is part of a multi-selection, keep it and move the group;
+  // otherwise select just this one
+  if(!sel.has(f.id)){ selId=f.id; sel=new Set([f.id]); highlightSelection(); renderPanel(); }
+  else { selId=f.id; highlightSelection(); }
   startDrag(f, node, e);
+});
+// never let the browser start its own drag of an icon inside the board
+board.addEventListener("dragstart", e=>e.preventDefault());
+// double-click a focus's icon to open the icon picker for it
+board.addEventListener("dblclick", e=>{
+  const node=e.target.closest(".node"); if(!node) return;
+  const f=byId(node.dataset.id); if(!f) return;
+  if(e.target.closest(".ic")){ e.preventDefault(); e.stopPropagation(); if(!linkMode){ select(f.id); openIconPicker(name=>setFocusIcon(f,name)); } }
 });
 function highlightSelection(){
   document.querySelectorAll(".node").forEach(n=>{
-    n.classList.toggle("sel", n.dataset.id===selId);
+    n.classList.toggle("sel", sel.has(n.dataset.id));
+    n.classList.toggle("primary", n.dataset.id===selId && sel.size>1);
     n.classList.toggle("linksrc", n.dataset.id===linkSrc);
   });
 }
@@ -1062,9 +1195,44 @@ function startPan(e){
 }
 stage.addEventListener("mousedown", e=>{
   const onNode=e.target.closest(".node");
-  // middle button pans anywhere; left button pans on empty canvas (never on a node)
-  if(e.button===1 || (e.button===0 && !onNode)){ e.preventDefault(); startPan(e); }
+  if(e.button===1){ e.preventDefault(); startPan(e); return; }      // middle always pans
+  if(e.button===0 && !onNode && !linkMode){
+    e.preventDefault();
+    if(P.settings.dragSelect) startMarquee(e);                       // drag-select on: box-select
+    else startPan(e);                                                // otherwise pan
+  }
 });
+// double-click empty canvas to drop a new focus (gesture switchable in Settings)
+stage.addEventListener("dblclick", e=>{
+  if(e.target.closest(".node") || linkMode) return;
+  const g=P.settings.newFocus;
+  if(g==="double" || (g==="shiftdouble" && e.shiftKey)) createFocusAtClient(e.clientX, e.clientY);
+});
+function startMarquee(e){
+  const rect=stage.getBoundingClientRect();
+  const add=e.ctrlKey||e.metaKey;
+  const base=add?new Set(sel):new Set();
+  const x0=e.clientX, y0=e.clientY;
+  const box=document.createElement("div"); box.className="marquee"; stage.appendChild(box);
+  let picked=new Set(base);
+  function draw(ev){
+    const l=Math.min(x0,ev.clientX), t=Math.min(y0,ev.clientY), w=Math.abs(ev.clientX-x0), h=Math.abs(ev.clientY-y0);
+    box.style.left=(l-rect.left)+"px"; box.style.top=(t-rect.top)+"px"; box.style.width=w+"px"; box.style.height=h+"px";
+    picked=new Set(base);
+    document.querySelectorAll(".node").forEach(n=>{
+      const r=n.getBoundingClientRect();
+      if(r.left<l+w && r.right>l && r.top<t+h && r.bottom>t) picked.add(n.dataset.id);
+      n.classList.toggle("sel", picked.has(n.dataset.id));
+    });
+  }
+  function up(){
+    document.removeEventListener("mousemove",draw,true); document.removeEventListener("mouseup",up,true);
+    box.remove();
+    sel=picked; selId=[...sel].pop()||null;
+    renderPanel(); render();
+  }
+  document.addEventListener("mousemove",draw,true); document.addEventListener("mouseup",up,true);
+}
 stage.addEventListener("wheel", e=>{
   e.preventDefault();
   const r=stage.getBoundingClientRect();
@@ -1082,19 +1250,29 @@ stage.addEventListener("auxclick", e=>{ if(e.button===1) e.preventDefault(); });
 
 function startDrag(f, node, e){
   const z=view.z;
-  const startX=e.clientX, startY=e.clientY, ox=f.x, oy=f.y;
-  node.classList.add("dragging");
+  const startX=e.clientX, startY=e.clientY;
+  // move every selected focus together, keeping their relative offsets
+  const group=(sel.size>1 && sel.has(f.id)) ? [...sel].map(byId).filter(Boolean) : [f];
+  const origin={}; group.forEach(g=>{ origin[g.id]={x:g.x,y:g.y}; });
+  group.forEach(g=>{ const n=$('.node[data-id="'+g.id+'"]'); if(n) n.classList.add("dragging"); });
   let moved=false;
   function mv(ev){
     const dx=(ev.clientX-startX)/z, dy=(ev.clientY-startY)/z;
     if(Math.abs(dx)>3||Math.abs(dy)>3) moved=true;
-    const nx=Math.max(0, Math.round(ox + dx/GX));
-    const ny=Math.max(0, Math.round(oy + dy/GY));
-    if(nx!==f.x||ny!==f.y){ f.x=nx; f.y=ny; node.style.left=cellLeft(nx)+"px"; node.style.top=cellTop(ny)+"px"; drawLinks(); }
+    // grid delta driven by the grabbed node, clamped so nothing goes negative
+    let gdx=Math.round(dx/GX), gdy=Math.round(dy/GY);
+    let minx=1e9,miny=1e9; group.forEach(g=>{ minx=Math.min(minx,origin[g.id].x); miny=Math.min(miny,origin[g.id].y); });
+    gdx=Math.max(gdx,-minx); gdy=Math.max(gdy,-miny);
+    let changed=false;
+    group.forEach(g=>{
+      const nx=origin[g.id].x+gdx, ny=origin[g.id].y+gdy;
+      if(nx!==g.x||ny!==g.y){ g.x=nx; g.y=ny; const n=$('.node[data-id="'+g.id+'"]'); if(n){ n.style.left=cellLeft(nx)+"px"; n.style.top=cellTop(ny)+"px"; } changed=true; }
+    });
+    if(changed) drawLinks();
   }
   function up(){
     document.removeEventListener("mousemove",mv); document.removeEventListener("mouseup",up);
-    node.classList.remove("dragging");
+    group.forEach(g=>{ const n=$('.node[data-id="'+g.id+'"]'); if(n) n.classList.remove("dragging"); });
     if(moved){ refreshDerived(f); render(); persist(); }
   }
   document.addEventListener("mousemove",mv); document.addEventListener("mouseup",up);
@@ -1188,8 +1366,9 @@ function fillIconGrid(q){
   if(customMatch.length) html+=customMatch.map(tile).join("");
   html+=shown.map(tile).join("");
   const g=$("#icGrid"); g.innerHTML=html||'<div class="mini">No icons match. Try Import image.</div>';
-  g.querySelectorAll("[data-ic]").forEach(t=> t.onclick=()=>{
-    iconSel=t.dataset.ic; g.querySelectorAll(".icontile").forEach(x=>x.classList.remove("sel")); t.classList.add("sel");
+  g.querySelectorAll("[data-ic]").forEach(t=>{
+    t.onclick=()=>{ iconSel=t.dataset.ic; g.querySelectorAll(".icontile").forEach(x=>x.classList.remove("sel")); t.classList.add("sel"); };
+    t.ondblclick=()=>{ iconSel=t.dataset.ic; if(iconCb) iconCb(iconSel); closeIcon(); };   // dbl-click picks instantly
   });
 }
 
@@ -1650,6 +1829,12 @@ function openSettings(){
       row("Grid","Show the background grid.", seg("showGrid",[[true,"On"],[false,"Off"]]))+
       row("Dates on focuses","Show the days / completion date under each focus.", seg("showDates",[[true,"On"],[false,"Off"]]))+
       row("Approval & chaos","Per-focus approval/chaos controls that write USA_apr_add / USA_chaos_add and feed the story-planner curve — like the Event Maker.", seg("aprchaos",[[true,"On"],[false,"Off"]]))+
+      row("New focus","How to create a focus on the canvas (the ＋ Focus button always works too).", seg("newFocus",[["double","Dbl-click"],["shiftdouble","Shift+dbl"],["key","N key"]]))+
+      row("Marquee select","Drag on empty canvas to box-select; panning then uses middle-mouse or the wheel.", seg("dragSelect",[[false,"Off"],[true,"On"]]))+
+      row("Bulk: cost","Show the cost control when several focuses are selected.", seg("bulkCost",[[true,"On"],[false,"Off"]]))+
+      row("Bulk: exclusive group","Show 'make these mutually exclusive'.", seg("bulkMutex",[[true,"On"],[false,"Off"]]))+
+      row("Bulk: approval / chaos","Show approval/chaos bulk-set (needs Approval & chaos on).", seg("bulkApr",[[true,"On"],[false,"Off"]]))+
+      row("Bulk: icon","Show 'set icon for all'.", seg("bulkIcon",[[true,"On"],[false,"Off"]]))+
       '<div class="mini" style="margin-top:4px">Icon images come from the community <a href="'+GFX_BASE+'" target="_blank" rel="noopener">HoI4 GFX Search</a>; they need an internet connection and never affect the exported mod.</div>'+
     '</div><div class="modal-f"><button class="btn primary" id="setDone">Done</button></div></div>';
   document.body.appendChild(veil);
@@ -1668,7 +1853,8 @@ function openHelp(){
   const veil=document.createElement("div"); veil.className="veil";
   veil.innerHTML='<div class="modal" style="width:600px"><div class="modal-h"><h3>How it works</h3></div>'+
     '<div class="modal-b" style="line-height:1.6">'+
-    '<p><b>Place focuses.</b> Click <b>＋ Focus</b>, then drag nodes on the grid. The grid is the same x / y the game uses.</p>'+
+    '<p><b>Place focuses.</b> <b>Double-click</b> empty canvas (or click <b>＋ Focus</b>) to add one, then drag nodes on the grid. Double-click a focus’s icon to change it. The grid is the same x / y the game uses.</p>'+
+    '<p><b>Select &amp; undo.</b> Click a focus to edit it; <b>Ctrl-click</b> more to select several — then drag to move the group, or bulk-edit them in the panel. Turn on <b>Marquee select</b> in Settings to box-select by dragging. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redoes.</p>'+
     '<p><b>Move around.</b> The scroll wheel zooms to the cursor by default — switch it to panning under <b>⚙ Settings</b>. Drag with the <b>middle mouse button</b> or on empty canvas to pan; hold <kbd>Shift</kbd> while scrolling to pan as well. The ＋ / － buttons zoom and <b>⤢</b> fits the whole tree.</p>'+
     '<p><b>Link them.</b> <b>↳ Prerequisite</b>: click the parent, then the child. <b>⇄ Exclusive</b>: click two focuses that should exclude each other. Toggle the button again (or press <kbd>Esc</kbd>) to stop.</p>'+
     '<p><b>Dates.</b> Set a start date and days-per-cost up top. Each node shows how long it takes and — following its prerequisite chain — the date it would finish.</p>'+
@@ -1684,27 +1870,37 @@ function openHelp(){
 /* =====================================================================
    15. Wire up + init
    ===================================================================== */
-function addFocusAt(){
-  // find a free-ish cell near top
+function addFocusAt(px, py){
   const taken={}; P.focuses.forEach(f=>taken[f.x+","+f.y]=1);
-  let x=0,y=0; outer: for(y=0;y<40;y++){ for(x=0;x<20;x++){ if(!taken[x+","+y]){ break outer; } } }
+  let x,y;
+  if(px!=null){ x=Math.max(0,px|0); y=Math.max(0,py|0); while(taken[x+","+y]) x++; }
+  else { outer: for(y=0;y<60;y++){ for(x=0;x<24;x++){ if(!taken[x+","+y]) break outer; } } }
   const f=newFocus(x,y); f.reward="add_political_power = 100";
   P.focuses.push(f); select(f.id); activeTab="basic"; renderPanel(); render();
   const el=$("#tabBasic #fName"); if(el) el.focus();
 }
-function delFocus(id){
-  P.focuses=P.focuses.filter(f=>f.id!==id);
-  P.focuses.forEach(f=>{ f.prereq=(f.prereq||[]).filter(p=>p!==id); f.mutex=(f.mutex||[]).filter(m=>m!==id); if(f.relTo===id) f.relTo=""; });
-  if(selId===id) selId=null;
+function createFocusAtClient(cx, cy){
+  const rect=stage.getBoundingClientRect();
+  const bx=(cx-rect.left-view.x)/view.z, by=(cy-rect.top-view.y)/view.z;   // board coords
+  const gx=Math.round((bx-PAD-(GX-NW)/2)/GX), gy=Math.round((by-PAD-6)/GY);
+  addFocusAt(gx, gy);
+}
+function delMany(ids){
+  if(!ids.length) return;
+  const set=new Set(ids);
+  P.focuses=P.focuses.filter(f=>!set.has(f.id));
+  P.focuses.forEach(f=>{ f.prereq=(f.prereq||[]).filter(p=>!set.has(p)); f.mutex=(f.mutex||[]).filter(m=>!set.has(m)); if(set.has(f.relTo)) f.relTo=""; });
+  sel=new Set(); selId=null;
   renderPanel(); render();
 }
+function delFocus(id){ delMany([id]); }
 function dupFocus(id){
   const src=byId(id); if(!src) return;
   const c=JSON.parse(JSON.stringify(src)); c.id=uid(); c.x=src.x+1; c.y=src.y; c.prereq=[]; c.mutex=[]; c.keyEdited=false; c.key=""; c.name=src.name?src.name+" copy":"";
   P.focuses.push(c); select(c.id);
 }
 
-$("#bAdd").onclick=addFocusAt;
+$("#bAdd").onclick=()=>addFocusAt();
 $("#bPre").onclick=()=>setLinkMode("pre");
 $("#bMx").onclick=()=>setLinkMode("mx");
 $("#bIdeas").onclick=openIdeas;
@@ -1715,6 +1911,7 @@ $("#bSettings").onclick=openSettings;
 $("#bHelp").onclick=openHelp;
 $("#pDel").onclick=()=>{ if(selId) delFocus(selId); };
 $("#pDup").onclick=()=>{ if(selId) dupFocus(selId); };
+$("#pmDel").onclick=()=>{ if(sel.size) delMany([...sel]); };
 $$(".tab").forEach(t=> t.onclick=()=>{ activeTab=t.dataset.tab; renderPanel(); });
 
 $("#mMod").oninput=e=>{ P.meta.mod=e.target.value; persist(); };
@@ -1728,10 +1925,16 @@ $("#zOut").onclick=()=>{ const r=stage.getBoundingClientRect(); zoomAt(r.width/2
 $("#zFit").onclick=fitView;
 
 document.addEventListener("keydown", e=>{
-  if(e.key==="Escape"){ if(linkMode){ setLinkMode(linkMode); } closePicker(); }
-  if((e.key==="Delete"||e.key==="Backspace") && selId){
-    const t=e.target.tagName; if(t==="INPUT"||t==="TEXTAREA"||e.target.isContentEditable) return;
-    e.preventDefault(); delFocus(selId);
+  const t=e.target.tagName, typing=(t==="INPUT"||t==="TEXTAREA"||e.target.isContentEditable);
+  // undo / redo — leave text fields to the browser's own undo
+  if((e.ctrlKey||e.metaKey) && (e.key==="z"||e.key==="Z") && !typing){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); return; }
+  if((e.ctrlKey||e.metaKey) && (e.key==="y"||e.key==="Y") && !typing){ e.preventDefault(); redo(); return; }
+  if(e.key==="Escape"){ if(linkMode){ setLinkMode(linkMode); } closePicker(); if(sel.size) select(null); }
+  if((e.key==="Delete"||e.key==="Backspace") && sel.size && !typing){
+    e.preventDefault(); delMany([...sel]);
+  }
+  if((e.key==="n"||e.key==="N"||e.key==="Insert") && P.settings.newFocus==="key" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey){
+    e.preventDefault(); addFocusAt();
   }
 });
 
@@ -1745,6 +1948,7 @@ document.addEventListener("keydown", e=>{
     P.focuses=[a,b];
   }
   applySettings(); syncTopbar(); render(); renderPanel(); fitView();
+  pushHist();   // seed the undo history with the starting state
 })();
 </script>
 </body>
