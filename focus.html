@@ -984,6 +984,38 @@ function focusKey(f){
   return f.key;
 }
 
+// Changing the country tag has to follow through to keys that were frozen on
+// import (FIN_something → BLR_something), to references to those keys inside raw
+// script, and to the country block's own tag. Auto-derived keys already track
+// tag() on their own, so we only rewrite the frozen ones — but we still register
+// the auto keys' old→new form so raw-script references to them get fixed too.
+function retagCountry(oldRaw, newRaw){
+  const norm=s=>String(s||"").toUpperCase().replace(/[^A-Z]/g,"").slice(0,3);
+  const o=norm(oldRaw), n=norm(newRaw);
+  if(!o || !n || o===n) return false;
+  const op=o+"_", np=n+"_", remap={};
+  P.focuses.forEach(f=>{
+    if(f.keyEdited && typeof f.key==="string" && f.key.indexOf(op)===0){ const nk=np+f.key.slice(op.length); remap[f.key]=nk; f.key=nk; }
+    else if(!f.keyEdited){ const base=slug(f.name)||(f.id||"").replace(/[^a-z0-9]/gi,""); if(base) remap[op+base]=np+base; }
+  });
+  P.ideas.forEach(i=>{ if(typeof i.key==="string" && i.key.indexOf(op)===0){ const nk=np+i.key.slice(op.length); remap[i.key]=nk; i.key=nk; } });
+  const keys=Object.keys(remap);
+  if(keys.length){
+    const rx=new RegExp("\\b("+keys.map(k=>k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")+")\\b","g");
+    const fix=s=> (typeof s==="string" && s) ? s.replace(rx, m=>remap[m]||m) : s;
+    P.focuses.forEach(f=>{ ["available","allowBranch","reward","bypass","selectEffect","aiWillDo","completeTooltip","extra","iconBlock"].forEach(k=>{ f[k]=fix(f[k]); }); if(Array.isArray(f.prereqRaw)) f.prereqRaw=f.prereqRaw.map(fix); });
+    P.meta.countryRaw=fix(P.meta.countryRaw); P.meta.treeExtra=fix(P.meta.treeExtra);
+  }
+  if(P.meta.countryRaw) P.meta.countryRaw=P.meta.countryRaw.replace(new RegExp("(\\btag\\s*=\\s*)"+o+"\\b","g"), "$1"+n);
+  // the tree id, only when it actually starts with the old tag prefix (FIN_focus,
+  // fin_focus_dream) — names like "finland_focus" don't match and are left alone
+  if(P.meta.treeId){
+    if(P.meta.treeId.indexOf(op)===0) P.meta.treeId=np+P.meta.treeId.slice(op.length);
+    else if(P.meta.treeId.indexOf(o.toLowerCase()+"_")===0) P.meta.treeId=n.toLowerCase()+"_"+P.meta.treeId.slice(o.length+1);
+  }
+  return true;
+}
+
 function otherFocuses(f){ return P.focuses.filter(x=>x.id!==f.id); }
 
 function renderBasic(f){
@@ -2778,7 +2810,11 @@ $("#pmDel").onclick=()=>{ if(sel.size) delMany([...sel]); };
 $$(".tab").forEach(t=> t.onclick=()=>{ activeTab=t.dataset.tab; renderPanel(); });
 
 $("#mMod").oninput=e=>{ P.meta.mod=e.target.value; persist(); };
+let tagBefore=tag();
+$("#mTag").addEventListener("focus", ()=>{ tagBefore=tag(); });
 $("#mTag").oninput=e=>{ P.meta.tag=e.target.value; if(selId){ const kf=$("#fKey"); const f=byId(selId); if(f&&!f.keyEdited&&kf){ kf.value=focusKey(f); $("#pKeyEcho").textContent=f.key; } } render(); };
+// commit: carry the tag change into imported/frozen keys, references, and the country block
+$("#mTag").addEventListener("change", ()=>{ if(retagCountry(tagBefore, P.meta.tag)) toast("Re-tagged "+tagBefore+" → "+tag()); tagBefore=tag(); syncTopbar(); render(); if(selId) renderPanel(); });
 $("#mStart").oninput=e=>{ P.meta.start=e.target.value; if(selId)refreshDerived(byId(selId)); render(); };
 $("#mDpc").oninput=e=>{ P.meta.dpc=clampInt(e.target.value,1,60,7); if(selId)refreshDerived(byId(selId)); render(); };
 $("#mDpc").onchange=e=>{ e.target.value=P.meta.dpc; };
