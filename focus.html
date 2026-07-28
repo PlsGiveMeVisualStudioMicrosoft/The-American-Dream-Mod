@@ -702,7 +702,15 @@ function treeId(){ return P.meta.treeId && P.meta.treeId.trim() ? P.meta.treeId.
 function persist(){ try{ store.set(SAVE_KEY, JSON.stringify(P)); }catch(e){} if(!restoring) pushHistSoon(); }
 
 /* ---- undo / redo: snapshots hooked into every autosave ---- */
-let hist=[], hp=-1, histTimer=null, restoring=false;
+let hist=[], hp=-1, histTimer=null, restoring=false, selUndo=null;
+// Clearing the selection isn't a data change, so it never hits the history
+// stack — but an accidental deselect still feels undoable. Remember what was
+// selected (and the data snapshot at the time) so the next undo can put it back,
+// as long as nothing else has changed since.
+function deselectAll(){
+  if(sel.size){ flushHist(); selUndo={ ids:[...sel], selId, snap:JSON.stringify(P) }; }
+  select(null);
+}
 function pushHist(){
   const snap=JSON.stringify(P);
   if(hp>=0 && hist[hp]===snap) return;          // nothing changed
@@ -721,7 +729,18 @@ function restoreHist(snap){
   applySettings(); syncTopbar(); render(); renderPanel();
   restoring=false;
 }
-function undo(){ flushHist(); if(hp>0){ hp--; restoreHist(hist[hp]); toast("Undo"); } else toast("Nothing to undo"); }
+function undo(){
+  flushHist();
+  // if the last thing that happened was a deselect (nothing changed since), undo
+  // puts the selection back rather than reaching for the previous data change
+  if(selUndo && !sel.size && JSON.stringify(P)===selUndo.snap && selUndo.ids.every(id=>P.focuses.some(f=>f.id===id))){
+    sel=new Set(selUndo.ids);
+    selId=(selUndo.selId && P.focuses.some(f=>f.id===selUndo.selId)) ? selUndo.selId : ([...sel].pop()||null);
+    selUndo=null; renderPanel(); render(); toast("Reselected"); return;
+  }
+  selUndo=null;
+  if(hp>0){ hp--; restoreHist(hist[hp]); toast("Undo"); } else toast("Nothing to undo");
+}
 function redo(){ if(hp<hist.length-1){ hp++; restoreHist(hist[hp]); toast("Redo"); } else toast("Nothing to redo"); }
 function loadSaved(){
   const raw=store.get(SAVE_KEY) || store.get(SAVE_KEY_OLD); if(!raw) return false;
@@ -1316,7 +1335,7 @@ function startPan(e){
   function mv(ev){ if(Math.abs(ev.clientX-sx)>3||Math.abs(ev.clientY-sy)>3) moved=true; view.x=ox+(ev.clientX-sx); view.y=oy+(ev.clientY-sy); applyTransform(); }
   function up(){
     document.removeEventListener("mousemove",mv,true); document.removeEventListener("mouseup",up,true); stage.classList.remove("panning");
-    if(!moved && btn===0 && sel.size) select(null);   // a plain click on empty canvas clears the selection
+    if(!moved && btn===0 && sel.size) deselectAll();   // a plain click on empty canvas clears the selection (undo puts it back)
   }
   document.addEventListener("mousemove",mv,true); document.addEventListener("mouseup",up,true);
 }
@@ -1964,6 +1983,8 @@ $("#fileProj").onchange=ev=>{
   fr.readAsText(f);
 };
 function toast(msg){ const o=document.querySelector(".toast"); if(o)o.remove(); const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2600); }
+// Ctrl/Cmd+S: this tool autosaves, so intercept the browser "save page" dialog and just confirm.
+function flashSaved(){ persist(); toast("Saved ✓  ·  this tool autosaves to your browser — use “Download .json” for a backup"); }
 function openSettings(){
   const s=P.settings;
   const veil=document.createElement("div"); veil.className="veil"; veil.id="setVeil";
@@ -2303,9 +2324,21 @@ function lintScript(text, f){
       const indent=indentOf(ln);
       while(stack.length && stack[stack.length-1].deep && trimmed[0]!=="}" && indent<=stack[stack.length-1].indent){
         const op=stack.pop();
+        if(op.synthetic) continue;   // we already reported the missing '{' for this block
         out.push({line:li+1, level:"error", msg:"a '}' is likely missing above line "+(li+1)+" — the block opened on line "+op.line+" is never closed"});
       }
       if(stack.length && indent>stack[stack.length-1].indent) stack[stack.length-1].deep=true;
+      // symmetric to the check above: a bare "key =" whose value block below is
+      // missing its opening '{'. Synthesise the open so the rest of the braces
+      // still balance (no phantom errors at the bottom) and pinpoint it here.
+      if(/^[A-Za-z_][\w.]*\s*=\s*$/.test(trimmed)){
+        let ni=li+1; while(ni<lines.length && lines[ni].replace(/#.*/,"").trim()==="") ni++;
+        const nt = ni<lines.length ? lines[ni].replace(/#.*/,"").trim() : "";
+        if(nt && nt[0]!=="{" && indentOf(lines[ni])>indent){
+          out.push({line:li+1, level:"error", msg:"a '{' is likely missing here — line "+(li+1)+" opens a block ('… =') but its opening brace is gone"});
+          stack.push({line:li+1, indent, deep:false, synthetic:true});
+        }
+      }
     }
     let q=0;
     for(let i=0;i<ln.length;i++){
@@ -2320,6 +2353,7 @@ function lintScript(text, f){
   }
   // anything still open at EOF (a block that runs off the end)
   stack.forEach(op=>{
+    if(op.synthetic) return;   // its missing '{' was already reported at its line
     let g=0;
     for(let i=op.line; i<lines.length; i++){ if(!lines[i].trim()) continue; if(indentOf(lines[i])<=op.indent){ g=i+1; break; } }
     out.push({line:op.line, level:"error", msg:"this '{' is never closed — a '}' is likely missing "+(g?("just before line "+g):"at the end of the script")});
@@ -2717,11 +2751,14 @@ $("#zFit").onclick=fitView;
 
 document.addEventListener("keydown", e=>{
   const t=e.target.tagName, typing=(t==="INPUT"||t==="TEXTAREA"||e.target.isContentEditable);
+  // Ctrl/Cmd+S — no typing guard, so it fires while editing in the code window too:
+  // stop the browser "save page" dialog and confirm that the tool already autosaved
+  if((e.ctrlKey||e.metaKey) && (e.key==="s"||e.key==="S")){ e.preventDefault(); flashSaved(); return; }
   // undo / redo — leave text fields to the browser's own undo
   if((e.ctrlKey||e.metaKey) && (e.key==="z"||e.key==="Z") && !typing){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); return; }
   if((e.ctrlKey||e.metaKey) && (e.key==="y"||e.key==="Y") && !typing){ e.preventDefault(); redo(); return; }
   if((e.ctrlKey||e.metaKey) && (e.key==="a"||e.key==="A") && !typing){ e.preventDefault(); selectAll(); return; }
-  if(e.key==="Escape"){ if(linkMode){ setLinkMode(linkMode); } closePicker(); if(sel.size) select(null); }
+  if(e.key==="Escape"){ if(linkMode){ setLinkMode(linkMode); } closePicker(); if(sel.size) deselectAll(); }
   if((e.key==="Delete"||e.key==="Backspace") && sel.size && !typing){
     e.preventDefault(); delMany([...sel]);
   }
