@@ -393,6 +393,7 @@ textarea{resize:vertical; font-size:13px; line-height:1.5}
     </div>
     <label class="chk" title="Events that live in the event maker"><input type="checkbox" id="srcEv" checked> Events</label>
     <label class="chk" title="Timeline-only planning notes"><input type="checkbox" id="srcNote" checked> Notes</label>
+    <label class="chk" title="Focuses flagged in the Focus tree creator"><input type="checkbox" id="srcFocus" checked> Focuses</label>
     <div class="spacer"></div>
     <div class="legend">
       <span><i class="lg-dot"></i>Precise date</span>
@@ -493,6 +494,7 @@ const store = (()=>{
   };
 })();
 
+const FKEY = "hoi4_focus_creator_v1";  // the focus tree creator project
 const EKEY = "hoi4_event_maker_v1";        // the event maker's project
 const TKEY = "hoi4_story_planner_v1";      // this page's own data
 const TKEY_OLD = "hoi4_timeline_v1";       // what it was called before the rename
@@ -577,7 +579,7 @@ const DEF_T = {
   hiddenLanes:[],
   hiddenTags:[],
   view:{ px:0.55, x:60, y:0 },
-  ui:{ drawer:true, srcEv:true, srcNote:true, sort:"date" },
+  ui:{ drawer:true, srcEv:true, srcNote:true, srcFocus:true, sort:"date" },
   /* The approval / chaos track. Every number below is out of
      USA_approval_00_tuning.txt and can be re-read from it at any time
      through the Tuning box, so retuning the mod retunes the planner. */
@@ -597,6 +599,7 @@ const DEF_T = {
 
 let T = null;          // planner data
 let P = null;          // event maker project (may be null)
+let F = null;          // focus tree creator project (may be null)
 let nums = {};         // evId -> event number, mirrors the event maker's numbering
 let selKey = null;     // "ev:<id>" or "note:<id>"
 let query = "";
@@ -672,6 +675,52 @@ function loadP(){
     if(p && Array.isArray(p.events)) return p;
   } catch(e){}
   return null;
+}
+/* ---- the focus tree creator's project ---- */
+function loadF(){
+  const raw = store.get(FKEY);
+  if(!raw) return null;
+  try { const f = JSON.parse(raw); if(f && Array.isArray(f.focuses)) return f; } catch(e){}
+  return null;
+}
+function focSlug(x){ return String(x||"").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,48); }
+function focKey(f){
+  if(f.key && f.keyEdited) return f.key;
+  const tag = (F && F.meta && F.meta.tag) ? String(F.meta.tag).toUpperCase() : "USA";
+  return tag + "_" + (focSlug(f.name) || "focus");
+}
+function focDelta(f){
+  const v = f.vars || {};
+  return { apr: v.aprOn ? (Number(v.apr)||0) : 0, chaos: v.chaosOn ? (Number(v.chaos)||0) : 0 };
+}
+/* days from the tree's start date to a focus, longest prerequisite path
+   (or shortest when the focus needs any one) - mirrors the focus tool */
+function focFinish(f, dpc, memo, stack){
+  if(memo[f.id] != null) return memo[f.id];
+  if(stack.has(f.id)) return (f.cost||0)*dpc;
+  stack.add(f.id);
+  const pre = (f.prereq||[]).map(id=>F.focuses.find(x=>x.id===id)).filter(Boolean);
+  let b = 0;
+  if(pre.length){
+    const vals = pre.map(p=>focFinish(p, dpc, memo, stack));
+    b = (f.prereqMode === "any") ? Math.min.apply(null, vals) : Math.max.apply(null, vals);
+  }
+  stack.delete(f.id);
+  const t = b + (f.cost||0)*dpc; memo[f.id] = t; return t;
+}
+/* planned focuses only, each with its chained date and apr/chaos */
+function focusItems(){
+  if(!F || !Array.isArray(F.focuses)) return [];
+  const dpc = Math.max(1, (F.meta && F.meta.dpc) || 7);
+  const base = parseDate((F.meta && F.meta.start) || "2025.1.1") || { y:2025, m:1, d:1 };
+  const baseDay = dayOf(base), memo = {};
+  const out = [];
+  F.focuses.forEach(f=>{
+    if(!f.plan) return;
+    const day = baseDay + focFinish(f, dpc, memo, new Set());
+    out.push({ f:f, day:day, date:fromDay(day), fx:focDelta(f), key:focKey(f) });
+  });
+  return out;
 }
 function saveP(){
   if(!P) return;
@@ -768,6 +817,21 @@ function derive(force){
       });
     });
   }
+  if(F && (force || T.ui.srcFocus)){
+    focusItems().forEach(fi=>{
+      const f = fi.f;
+      out.push({
+        key:"foc:"+f.id, src:"foc", id:f.id, foc:f,
+        title:f.name || fi.key, desc:f.desc || "",
+        date:fi.date, dateStr:fi.date.y+"."+fi.date.m+"."+fi.date.d,
+        lane:String((F.meta && F.meta.tag) || "USA").toUpperCase(),
+        color:"green",
+        tags:[], image:null, notes:"",
+        links:[], kind:"focus", mode:"precise", planned:false,
+        fx:fi.fx, evkey:fi.key
+      });
+    });
+  }
   return out;
 }
 
@@ -845,8 +909,9 @@ function spanLabel(){
    --------------------------------------------------------------------- */
 function cardHTML(it){
   const s = it.src === "ev";
-  const key = s ? esc(it.evkey) : "note";
-  const kind = s ? (it.kind === "news" ? "news" : "country") : "";
+  const isFoc = it.src === "foc";
+  const key = s ? esc(it.evkey) : (isFoc ? esc(it.evkey) : "note");
+  const kind = s ? (it.kind === "news" ? "news" : "country") : (isFoc ? "focus" : "");
   let h = "";
   if(it.image) h += '<img class="card-img" src="'+esc(it.image)+'" alt="">';
   h += '<div class="card-b">';
@@ -1540,6 +1605,7 @@ function modal(html, wide){
 function openEditor(key){
   const it = findItem(key);
   if(!it) return;
+  if(it.src === "foc"){ select(key); return; }   // focuses are edited in the Focus tree creator
   select(key);
   const isEv = it.src === "ev";
   const m = isEv ? metaOf(it.id) : null;
@@ -1844,6 +1910,12 @@ function importJSON(file){
   fr.onload = ()=>{
     let d;
     try { d = JSON.parse(fr.result); } catch(e){ toast("That file is not JSON."); return; }
+    if(d && Array.isArray(d.focuses) && !Array.isArray(d.items)){
+      F = d; store.set(FKEY, JSON.stringify(F));
+      commit();
+      toast("Imported " + d.focuses.length + " focuses from the focus tree creator");
+      return;
+    }
     if(d && Array.isArray(d.events) && !Array.isArray(d.items)){
       toast("That is an event maker project \u2014 open it with the event maker's Open project button.");
       return;
@@ -2076,6 +2148,11 @@ function buildSys(){
     if(!d){ undated++; return; }
     list.push({ e:e, day:dayOf(d), dl:dl, ops:ops });
   });
+  if(F && T.ui.srcFocus) focusItems().forEach(fi=>{
+    const dl = fi.fx;
+    if(!dl.apr && !dl.chaos) return;
+    list.push({ e:{ id:fi.f.id }, key:"foc:"+fi.f.id, day:fi.day, dl:dl, ops:[] });
+  });
   list.sort((a,b)=> a.day - b.day || (nums[a.e.id] || 0) - (nums[b.e.id] || 0));
 
   const seed = list.length ? Math.min(armDay, list[0].day) : armDay;
@@ -2100,7 +2177,7 @@ function buildSys(){
       apr   = clamp(apr   + r.dl.apr,   0, 100);
       chaos = clamp(chaos + r.dl.chaos, 0, 100);
       steps++;
-      pts.push({ day:r.day, apr:apr, chaos:chaos, e:r.e, dl:r.dl, r:r, key:"ev:"+r.e.id });
+      pts.push({ day:r.day, apr:apr, chaos:chaos, e:r.e, dl:r.dl, r:r, key:(r.key || ("ev:"+r.e.id)) });
     }
     r.ops.forEach(op=>{
       if(op.op === "add"){
@@ -2798,6 +2875,7 @@ $("#zOut").onclick = ()=>{ zoomAt(viewW()/2, 1/1.5); saveT(); };
 $("#q").oninput = e=>{ query = e.target.value.trim(); rebuild(); repan(); };
 $("#srcEv").onchange = e=>{ T.ui.srcEv = e.target.checked; saveT(); rebuild(); repan(); };
 $("#srcNote").onchange = e=>{ T.ui.srcNote = e.target.checked; saveT(); rebuild(); repan(); };
+$("#srcFocus").onchange = e=>{ T.ui.srcFocus = e.target.checked; saveT(); rebuild(); repan(); };
 $("#sort").onchange = e=>{ T.ui.sort = e.target.value; saveT(); rebuild(); };
 
 $("#dToggle").onclick = ()=>{
@@ -2893,6 +2971,12 @@ addEventListener("resize", ()=>{
 /* The event maker autosaves into the same bucket. When it changes in
    another tab, pick it up rather than sit on a stale copy. */
 addEventListener("storage", e=>{
+  if(e.key === FKEY){
+    const ff = loadF(); if(!ff) return;
+    F = ff; rebuild(); repan();
+    toast("Reloaded focuses from the focus tree creator");
+    return;
+  }
   if(e.key !== EKEY) return;
   const fresh = loadP();
   if(!fresh) return;
@@ -2907,10 +2991,12 @@ addEventListener("storage", e=>{
 const firstRun = store.get(TKEY) == null && store.get(TKEY_OLD) == null;
 T = loadT();
 P = loadP();
+F = loadF();
 
 $("#q").value = "";
 $("#srcEv").checked = T.ui.srcEv !== false;
 $("#srcNote").checked = T.ui.srcNote !== false;
+$("#srcFocus").checked = T.ui.srcFocus !== false;
 $("#sort").value = T.ui.sort || "date";
 $("#drawer").classList.toggle("shut", T.ui.drawer === false);
 trackFields();
