@@ -129,6 +129,33 @@ svg.links{position:absolute; inset:0; pointer-events:none; overflow:visible}
 .node.planned .planbadge{display:block}
 .node.external{border-style:dashed; opacity:.7; background:var(--sunk)}
 .node.external .nm{font-style:italic}
+.board.tallnodes .node{height:auto; min-height:98px; padding-bottom:8px}
+.board.tallnodes .node .nm{max-height:none; overflow:visible}
+.node.hit{box-shadow:0 0 0 3px var(--gold)}
+.node.hidden-preview{opacity:.22}
+.panel{position:relative}
+.panel-grip{position:absolute; top:0; bottom:0; left:-3px; width:7px; cursor:col-resize; z-index:6}
+.panel-grip:hover, .panel-grip.on{background:var(--accent2); opacity:.35}
+.body.panel-left .panel-grip{left:auto; right:-3px}
+.searchwrap{position:relative}
+.search-in{background:var(--sunk); border:1px solid var(--line); border-radius:14px; padding:6px 12px; width:210px}
+.search-res{position:absolute; top:120%; left:0; z-index:70; width:340px; max-width:80vw; max-height:360px; overflow:auto;
+  background:var(--card); border:1px solid var(--line2); border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.22)}
+.search-res .sr{padding:7px 10px; cursor:pointer; border-top:1px solid var(--line)}
+.search-res .sr:first-child{border-top:none}
+.search-res .sr:hover, .search-res .sr.hl{background:var(--sunk)}
+.search-res .sr .sn{font-size:13px; font-weight:600}
+.search-res .sr .sk{font-family:var(--font-mono); font-size:11px; color:var(--ink3)}
+.search-res .sr .sw{font-size:11px; color:var(--accent2)}
+.search-res .none{padding:10px; color:var(--ink3); font-size:12px}
+.flagchip{display:inline-flex; align-items:center; gap:6px; padding:6px 8px; border:1px solid var(--line); border-radius:var(--r); margin:0 0 6px 0; width:100%}
+.flagchip .fk{font-family:var(--font-mono); font-size:12px; flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.flagchip .fs{font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:var(--ink3)}
+.previewbar{position:absolute; left:12px; top:12px; z-index:40; background:var(--card); border:1px solid var(--line2);
+  border-radius:8px; padding:8px 10px; box-shadow:0 2px 10px rgba(0,0,0,.15); max-width:260px; display:none}
+.previewbar.on{display:block}
+.previewbar h5{margin:0 0 6px; font-size:12px}
+.previewbar label{display:flex; gap:7px; align-items:center; font-size:12px; margin:3px 0; font-family:var(--font-mono)}
 
 .stage-hint{position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);
   text-align:center; color:var(--ink3); font-size:14px; pointer-events:none; width:70%}
@@ -217,7 +244,7 @@ details.adv-sub .adv-body{padding:0 10px 10px}
 /* icon library grid */
 .iconsearch{display:flex; gap:8px; margin-bottom:10px}
 .iconsearch input{flex:1 1 auto; background:var(--sunk); border:1px solid var(--line); border-radius:var(--r); padding:8px 10px}
-.icongrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); gap:8px}
+.icongrid{height:min(58vh,460px); overflow:auto; position:relative}
 .icontile{border:1px solid var(--line); border-radius:6px; padding:6px 4px; text-align:center; cursor:pointer; background:var(--sunk); overflow:hidden}
 .icontile:hover{border-color:var(--accent); background:var(--card)}
 .icontile.sel{border-color:var(--accent); box-shadow:0 0 0 2px rgba(31,58,95,.2)}
@@ -256,11 +283,17 @@ a{color:var(--accent2)}
     <div class="field"><label>Tag</label><input class="tag" id="mTag" maxlength="3" value="USA" spellcheck="false"></div>
     <div class="field"><label>Start</label><input class="date" id="mStart" value="1936.1.1" spellcheck="false"></div>
     <div class="field"><label>Days / cost</label><input class="num" id="mDpc" value="7"></div>
+    <div class="searchwrap" id="searchWrap">
+      <input id="searchInput" class="search-in" placeholder="Search focuses, effects, people…" spellcheck="false">
+      <div class="search-res" id="searchRes" hidden></div>
+    </div>
     <div class="spacer"></div>
     <button class="btn" id="bAdd">＋ Focus</button>
     <button class="btn" id="bPre" title="Draw a prerequisite: click the parent, then the child">↳ Prerequisite</button>
     <button class="btn" id="bMx" title="Draw a mutually-exclusive link: click one focus, then the other">⇄ Exclusive</button>
     <button class="btn" id="bIdeas">◆ Spirits</button>
+    <button class="btn" id="bFlags" title="Flags for hidden branches">⚑ Flags</button>
+    <button class="btn" id="bPreview" title="Preview which branches show per flag">👁 Preview</button>
     <button class="btn ghost" id="bImport" title="Import an existing focus tree (.txt) + localisation">Import tree</button>
     <button class="btn ghost" id="bSave" title="Save project file">Save</button>
     <button class="btn ghost" id="bOpen" title="Open project file">Open</button>
@@ -273,6 +306,7 @@ a{color:var(--accent2)}
     <!-- ================= STAGE ================= -->
     <div class="stage" id="stage">
       <div class="linkbanner" id="linkBanner"></div>
+      <div class="previewbar" id="previewBar"></div>
       <div class="board" id="board">
         <div class="grid-bg" id="gridBg"></div>
         <svg class="links" id="links"></svg>
@@ -290,6 +324,7 @@ a{color:var(--accent2)}
 
     <!-- ================= PANEL ================= -->
     <div class="panel" id="panel">
+      <div class="panel-grip" id="panelGrip" title="Drag to resize the panel"></div>
       <div class="ph-empty" id="panelEmpty">
         Select a focus to edit it,<br>or add a new one.
       </div>
@@ -614,8 +649,8 @@ const SAVE_KEY_OLD="ftc_project_v1";
 function defMeta(){ return { mod:"", tag:"USA", start:"2025.1.1", dpc:7, treeId:"" }; }
 function defSettings(){ return { panelSide:"right", wheel:"zoom", webIcons:true, showGrid:true, showDates:true, theme:"light", aprchaos:false,
   newFocus:"double", dragSelect:false, bulkCost:true, bulkMutex:true, bulkApr:false, bulkIcon:false,
-  advLabel:"auto" }; }
-let P = { meta:defMeta(), focuses:[], ideas:[], icons:{}, settings:defSettings() };
+  advLabel:"auto", tallNodes:false, panelW:380, searchBar:true }; }
+let P = { meta:defMeta(), focuses:[], ideas:[], icons:{}, flags:[], settings:defSettings() };
 let selId=null, sel=new Set(), view={z:1,x:0,y:0};
 
 function newFocus(x,y){
@@ -680,7 +715,8 @@ function normalize(j){
   }));
   const ideas=(j.ideas||[]).map(i=>Object.assign(newIdea(), i, { mods:i.mods||[] }));
   const settings=Object.assign(defSettings(), j.settings||{});
-  return { meta:m, focuses, ideas, icons, settings };
+  const flags=Array.isArray(j.flags)?j.flags:[];
+  return { meta:m, focuses, ideas, icons, flags, settings };
 }
 
 /* =====================================================================
@@ -794,6 +830,7 @@ function render(){
   drawLinks();
   $("#stageHint").style.display = P.focuses.length ? "none":"block";
   syncTopbar();
+  if(previewOn) applyPreview();
   persist();
 }
 
@@ -869,6 +906,12 @@ function toggleSel(id){
   else { sel.add(id); selId=id; }
   renderPanel(); render();
 }
+function selectAll(){
+  if(!P.focuses.length) return;
+  sel=new Set(P.focuses.map(f=>f.id));
+  selId=P.focuses[P.focuses.length-1].id;
+  renderPanel(); render();
+}
 function renderPanel(){
   const pm=$("#panelMulti");
   if(sel.size>1){ $("#panelEmpty").style.display="none"; $("#panelBody").style.display="none"; pm.style.display="flex"; renderMulti(); return; }
@@ -907,7 +950,7 @@ function renderBasic(f){
     '<div class="fld"><label>Description</label>'+
       '<textarea class="inp" id="fDesc" style="white-space:normal; font-family:var(--font-ui); min-height:52px" placeholder="Shown in the focus tooltip.">'+esc(f.desc)+'</textarea></div>'+
     '<div class="fld"><label>Icon</label>'+
-      '<div class="iconpick"><div class="prev">'+iconHTML(f.icon)+'</div>'+
+      '<div class="iconpick"><div class="prev" id="fIconPrev" title="Double-click to choose an icon" style="cursor:pointer">'+iconHTML(f.icon)+'</div>'+
         '<div style="flex:1 1 auto; min-width:0">'+
           '<button class="btn sm" id="fIcon" style="width:100%">Choose icon…</button>'+
           '<div class="mono mini" style="margin-top:4px; word-break:break-all">'+esc(f.icon)+'</div>'+
@@ -929,7 +972,9 @@ function renderBasic(f){
     '<div class="fld"><label>Completion reward <span class="mini">(effects)</span></label>'+
       '<div class="fx-tools">'+
         '<button class="btn sm" id="fxAdd">＋ Effect…</button>'+
-        '<button class="btn sm" id="fxSpirit">◆ Grant spirit…</button></div>'+
+        '<button class="btn sm" id="fxSpirit">◆ Grant spirit…</button>'+
+        '<button class="btn sm" id="fxFlag" title="Set a flag to reveal a hidden branch">⚑ Set flag…</button>'+
+        '<button class="btn sm" id="fxBig" title="Large editor">⤢</button></div>'+
       '<textarea class="inp" id="fReward" placeholder="add_political_power = 100">'+esc(f.reward)+'</textarea></div>'+
     aprChaosHTML(f)+
     '<div class="fld"><label class="checkline"><input type="checkbox" id="fPlan"'+(f.plan?" checked":"")+'> Show on the story-planner timeline</label>'+
@@ -946,6 +991,9 @@ function renderBasic(f){
   $("#pmAny").onclick=()=>{ f.prereqMode="any"; renderBasic(f); render(); };
   $("#fxAdd").onclick=e=>openScriptPicker(e.currentTarget, $("#fReward"), "fx", f, "reward");
   $("#fxSpirit").onclick=e=>openSpiritPicker(e.currentTarget, $("#fReward"), f);
+  $("#fxFlag").onclick=e=>openSetFlagPicker(e.currentTarget, $("#fReward"), f);
+  $("#fxBig").onclick=()=>bigEdit(f,"reward","Completion reward","fx");
+  { const pv=$("#fIconPrev"); if(pv) pv.ondblclick=()=>openIconPicker(name=>setFocusIcon(f,name)); }
   bindText("#fReward", v=>{ f.reward=v; });
   const pl=$("#fPlan"); if(pl) pl.onchange=()=>{ f.plan=pl.checked; markPlanNode(f); persist(); };
   if(P.settings.aprchaos){
@@ -1088,6 +1136,7 @@ function renderAdv(f){
     advBlock("selectEffect","Select effect","Runs the moment the focus is selected (not on completion).", f.selectEffect, false, "fx")+
     advBlock("bypass","Bypass (trigger)","If true, the focus is skipped / auto-completed.", f.bypass, true)+
     advBlock("completeTooltip","Complete tooltip","Extra tooltip lines shown on the focus.", f.completeTooltip, false, "fx")+
+    branchFlagHTML(f)+
     advBlock("allowBranch","Allow branch (trigger)","Hides this whole branch unless true.", f.allowBranch, true)+
     '<details class="adv-sub"><summary>Position &amp; filters</summary><div class="adv-body">'+
       '<div class="fld"><label>Relative to focus</label><select class="inp" id="aRel">'+relOpts+'</select>'+
@@ -1108,9 +1157,13 @@ function renderAdv(f){
   ["available","aiWillDo","selectEffect","bypass","completeTooltip","allowBranch"].forEach(k=>{
     const ta=el.querySelector('[data-adv="'+k+'"]');
     if(ta){ ta.addEventListener("input",()=>{ f[k]=ta.value; markAdvTab(f); }); }
+    const bigb=el.querySelector('[data-advbig="'+k+'"]');
+    if(bigb){ bigb.onclick=()=>bigEdit(f, k, bigb.dataset.lbl, bigb.dataset.mode||null); }
     const btn=el.querySelector('[data-advadd="'+k+'"]');
     if(btn){ const mode=btn.dataset.mode; btn.onclick=e=>openScriptPicker(e.currentTarget, ta, mode, f, k); }
   });
+  const bf=$("#aBranchFlag");
+  if(bf) bf.onchange=()=>{ const v=bf.value; if(!v) f.allowBranch=""; else { const p=v.split(":"); f.allowBranch="has_"+p[0]+"_flag = "+p[1]; } markAdvTab(f); renderAdv(f); if(previewOn) applyPreview(); };
   $("#aRel").onchange=e=>{ f.relTo=e.target.value; markAdvTab(f); render(); };
   bindText("#aWar", v=>{ f.willWarWith=v.toUpperCase().replace(/[^A-Z]/g,"").slice(0,3); markAdvTab(f); });
   el.querySelectorAll("[data-sf]").forEach(cb=> cb.onchange=()=>{
@@ -1132,9 +1185,10 @@ function markAdvTab(f){
 }
 function advBlock(key,label,hint,val,isTrig,fxmode){
   const mode=fxmode||(isTrig?"trig":null);
-  const btn=mode?'<button class="btn sm" data-advadd="'+key+'" data-mode="'+mode+'">＋ '+(mode==="trig"?"Trigger":"Effect")+'…</button>':'';
-  return '<div class="fld"><label>'+esc(label)+'</label>'+
-    (btn?'<div class="fx-tools">'+btn+'</div>':'')+
+  let tools='<div class="fx-tools">';
+  if(mode) tools+='<button class="btn sm" data-advadd="'+key+'" data-mode="'+mode+'">＋ '+(mode==="trig"?"Trigger":"Effect")+'…</button>';
+  tools+='<button class="btn sm" data-advbig="'+key+'" data-mode="'+(mode||"")+'" data-lbl="'+esc(label)+'" title="Large editor">⤢</button></div>';
+  return '<div class="fld"><label>'+esc(label)+'</label>'+tools+
     '<textarea class="inp" data-adv="'+key+'" placeholder="'+esc(hint)+'">'+esc(val||"")+'</textarea>'+
     '<div class="hint">'+esc(hint)+'</div></div>';
 }
@@ -1189,6 +1243,9 @@ function applySettings(){
   document.body.classList.toggle("theme-dark", s.theme==="dark");
   const gb=$("#gridBg"); if(gb) gb.style.display=s.showGrid?"block":"none";
   board.classList.toggle("nodates", !s.showDates);
+  board.classList.toggle("tallnodes", !!s.tallNodes);
+  const pan=$("#panel"); if(pan){ pan.style.flex="0 0 "+(s.panelW||380)+"px"; pan.style.maxWidth="min("+(s.panelW||380)+"px, 60vw)"; }
+  const sw=$("#searchWrap"); if(sw) sw.style.display=(s.searchBar===false)?"none":"";
 }
 
 /* ---- pan & zoom engine ---- */
@@ -1218,10 +1275,14 @@ function fitView(){
   applyTransform(); updZoom();
 }
 function startPan(e){
-  const sx=e.clientX, sy=e.clientY, ox=view.x, oy=view.y;
+  const sx=e.clientX, sy=e.clientY, ox=view.x, oy=view.y, btn=e.button;
   stage.classList.add("panning");
-  function mv(ev){ view.x=ox+(ev.clientX-sx); view.y=oy+(ev.clientY-sy); applyTransform(); }
-  function up(){ document.removeEventListener("mousemove",mv,true); document.removeEventListener("mouseup",up,true); stage.classList.remove("panning"); }
+  let moved=false;
+  function mv(ev){ if(Math.abs(ev.clientX-sx)>3||Math.abs(ev.clientY-sy)>3) moved=true; view.x=ox+(ev.clientX-sx); view.y=oy+(ev.clientY-sy); applyTransform(); }
+  function up(){
+    document.removeEventListener("mousemove",mv,true); document.removeEventListener("mouseup",up,true); stage.classList.remove("panning");
+    if(!moved && btn===0 && sel.size) select(null);   // a plain click on empty canvas clears the selection
+  }
   document.addEventListener("mousemove",mv,true); document.addEventListener("mouseup",up,true);
 }
 stage.addEventListener("mousedown", e=>{
@@ -1305,6 +1366,7 @@ function startDrag(f, node, e){
     document.removeEventListener("mousemove",mv); document.removeEventListener("mouseup",up);
     group.forEach(g=>{ const n=$('.node[data-id="'+g.id+'"]'); if(n) n.classList.remove("dragging"); });
     if(moved){ refreshDerived(f); render(); persist(); }
+    else if(sel.size>1 && sel.has(f.id)){ select(f.id); }   // a click (no drag) on a grouped node collapses to just it
   }
   document.addEventListener("mousemove",mv); document.addEventListener("mouseup",up);
 }
@@ -1373,30 +1435,44 @@ function openIconPicker(cb){
   $("#icOk").onclick=()=>{ if(iconSel){ iconCb(iconSel); } closeIcon(); };
   $("#icImport").onclick=()=>{ picImageMode="library"; $("#fileImg").click(); };
   const si=$("#icSearch"); si.oninput=()=>fillIconGrid(si.value); si.focus();
+  $("#icGrid").onscroll=()=>{ if(!icScrollRAF) icScrollRAF=requestAnimationFrame(()=>{ icScrollRAF=0; layoutIconWindow(); }); };
   fillIconGrid("");
 }
 function closeIcon(){ const v=$("#iconVeil"); if(v) v.remove(); iconCb=null; }
+/* virtualized icon grid: only the rows near the viewport are in the DOM, so
+   all ~3100 icons scroll smoothly without building thousands of tiles */
+let iconList=[], icScrollRAF=0;
+const IC_TW=104, IC_TH=94, IC_GAP=8;
 function fillIconGrid(q){
   q=(q||"").trim().toLowerCase();
-  const custom=Object.keys(P.icons);
-  let libs=ICONS;
-  if(q) libs=ICONS.filter(n=>n.toLowerCase().indexOf(q)>=0);
-  const customMatch=custom.filter(n=>!q||n.toLowerCase().indexOf(q)>=0);
-  const shown=libs.slice(0,240);
-  $("#icCount").textContent=(customMatch.length+libs.length)+" match"+((customMatch.length+libs.length)===1?"":"es")+(libs.length>240?" · showing first 240":"");
-  const tile=(name)=>{
-    const short=name.replace(/^GFX_/,"");
-    let box;
-    if(P.icons[name]) box='<img src="'+P.icons[name].url+'">';
-    else if(P.settings.webIcons) box='<img src="'+iconURL(name)+'" loading="lazy" data-n="'+esc(short)+'" onerror="icoErr(this)">';
-    else box='<span class="g">'+esc(short)+'</span>';
-    return '<div class="icontile'+(iconSel===name?" sel":"")+'" data-ic="'+esc(name)+'">'+
-      '<div class="box">'+box+'</div><div class="cap">'+esc(short)+'</div></div>';
-  };
-  let html="";
-  if(customMatch.length) html+=customMatch.map(tile).join("");
-  html+=shown.map(tile).join("");
-  const g=$("#icGrid"); g.innerHTML=html||'<div class="mini">No icons match. Try Import image.</div>';
+  const custom=Object.keys(P.icons).filter(n=>!q||n.toLowerCase().indexOf(q)>=0);
+  const libs=q?ICONS.filter(n=>n.toLowerCase().indexOf(q)>=0):ICONS;
+  iconList=custom.concat(libs);
+  const cc=$("#icCount"); if(cc) cc.textContent=iconList.length+" icon"+(iconList.length===1?"":"s");
+  const g=$("#icGrid"); if(g) g.scrollTop=0;
+  layoutIconWindow();
+}
+function iconTileHTML(name){
+  const short=name.replace(/^GFX_/,"");
+  let box;
+  if(P.icons[name]) box='<img src="'+P.icons[name].url+'">';
+  else if(P.settings.webIcons) box='<img src="'+iconURL(name)+'" loading="lazy" data-n="'+esc(short)+'" onerror="icoErr(this)">';
+  else box='<span class="g">'+esc(short)+'</span>';
+  return '<div class="icontile'+(iconSel===name?" sel":"")+'" data-ic="'+esc(name)+'" style="height:'+IC_TH+'px"><div class="box">'+box+'</div><div class="cap">'+esc(short)+'</div></div>';
+}
+function layoutIconWindow(){
+  const g=$("#icGrid"); if(!g) return;
+  if(!iconList.length){ g.innerHTML='<div class="mini" style="padding:14px">No icons match. Try Import image.</div>'; return; }
+  const W=g.clientWidth||560;
+  const cols=Math.max(1, Math.floor((W+IC_GAP)/(IC_TW+IC_GAP)));
+  const rowH=IC_TH+IC_GAP, rows=Math.ceil(iconList.length/cols), totalH=rows*rowH;
+  const scroll=g.scrollTop, vh=g.clientHeight||420;
+  const startRow=Math.max(0, Math.floor(scroll/rowH)-2);
+  const endRow=Math.min(rows, Math.ceil((scroll+vh)/rowH)+2);
+  const startI=startRow*cols, endI=Math.min(iconList.length, endRow*cols);
+  let inner=""; for(let i=startI;i<endI;i++) inner+=iconTileHTML(iconList[i]);
+  g.innerHTML='<div style="height:'+totalH+'px; position:relative">'+
+    '<div style="position:absolute; left:0; right:0; top:'+(startRow*rowH)+'px; display:grid; grid-template-columns:repeat('+cols+',minmax(0,1fr)); gap:'+IC_GAP+'px">'+inner+'</div></div>';
   g.querySelectorAll("[data-ic]").forEach(t=>{
     t.onclick=()=>{ iconSel=t.dataset.ic; g.querySelectorAll(".icontile").forEach(x=>x.classList.remove("sel")); t.classList.add("sel"); };
     t.ondblclick=()=>{ iconSel=t.dataset.ic; if(iconCb) iconCb(iconSel); closeIcon(); };   // dbl-click picks instantly
@@ -1864,6 +1940,8 @@ function openSettings(){
       row("Theme","", seg("theme",[["light","Light"],["dark","Dark"]]))+
       row("Grid","Show the background grid.", seg("showGrid",[[true,"On"],[false,"Off"]]))+
       row("Dates on focuses","Show the days / completion date under each focus.", seg("showDates",[[true,"On"],[false,"Off"]]))+
+      row("Tall focuses","Let focus boxes grow taller so long names show in full.", seg("tallNodes",[[true,"On"],[false,"Off"]]))+
+      row("Search bar","Show the search box in the toolbar.", seg("searchBar",[[true,"On"],[false,"Off"]]))+
       row("Advanced tab label","Auto shows the search-filter name until other advanced options are set (then 'Advanced'). Or force filter-only, Advanced-only, or both.", seg("advLabel",[["auto","Auto"],["filter","Filter"],["advanced","Advanced"],["both","Both"]]))+
       row("Approval & chaos","Per-focus approval/chaos controls that write USA_apr_add / USA_chaos_add and feed the story-planner curve — like the Event Maker.", seg("aprchaos",[[true,"On"],[false,"Off"]]))+
       row("New focus","How to create a focus on the canvas (the ＋ Focus button always works too).", seg("newFocus",[["double","Dbl-click"],["shiftdouble","Shift+dbl"],["key","N key"]]))+
@@ -2110,6 +2188,145 @@ function openImport(){
 }
 
 /* =====================================================================
+   14c. Panel resize, pop-out editor, flags, branch preview, search
+   ===================================================================== */
+/* ---- resizable panel ---- */
+$("#panelGrip").addEventListener("mousedown", e=>{
+  e.preventDefault();
+  const grip=$("#panelGrip"); grip.classList.add("on");
+  const left=P.settings.panelSide==="left";
+  function mv(ev){
+    let w = left ? ev.clientX : (window.innerWidth - ev.clientX);
+    w = Math.max(300, Math.min(760, w));
+    P.settings.panelW=Math.round(w);
+    const pan=$("#panel"); pan.style.flex="0 0 "+P.settings.panelW+"px"; pan.style.maxWidth="min("+P.settings.panelW+"px,60vw)";
+  }
+  function up(){ document.removeEventListener("mousemove",mv,true); document.removeEventListener("mouseup",up,true); grip.classList.remove("on"); persist(); }
+  document.addEventListener("mousemove",mv,true); document.addEventListener("mouseup",up,true);
+});
+
+/* ---- pop-out large editor for one script field ---- */
+function bigEdit(f, field, title, mode){
+  closePicker();
+  const veil=document.createElement("div"); veil.className="veil"; veil.id="bigVeil";
+  veil.innerHTML='<div class="modal" style="width:780px; height:82vh"><div class="modal-h"><h3>'+esc(title)+'</h3>'+
+    (mode?'<div class="spacer"></div><button class="btn sm" id="bigAdd">＋ '+(mode==="trig"?"Trigger":"Effect")+'…</button>':'')+
+    '</div><div class="modal-b" style="flex:1 1 auto; display:flex; padding:12px"><textarea id="bigTA" class="inp mono" style="flex:1 1 auto; height:100%; min-height:0; white-space:pre">'+esc(f[field]||"")+'</textarea></div>'+
+    '<div class="modal-f"><button class="btn primary" id="bigDone">Done</button></div></div>';
+  document.body.appendChild(veil);
+  const ta=$("#bigTA");
+  ta.addEventListener("input",()=>{ f[field]=ta.value; if(field!=="reward") markAdvTab(f); persist(); });
+  if(mode) $("#bigAdd").onclick=ev=>openScriptPicker(ev.currentTarget, ta, mode, f, field);
+  const close=()=>{ veil.remove(); renderPanel(); };
+  $("#bigDone").onclick=close;
+  veil.onclick=e=>{ if(e.target===veil) close(); };
+  ta.focus();
+}
+
+/* ---- flags (hidden branches) ---- */
+function branchFlagOf(f){
+  const m=/^\s*has_(global|country)_flag\s*=\s*([A-Za-z0-9_]+)\s*$/.exec(f.allowBranch||"");
+  return m?{scope:m[1], key:m[2]}:null;
+}
+function openFlags(){
+  const veil=document.createElement("div"); veil.className="veil"; veil.id="flagVeil";
+  veil.innerHTML='<div class="modal" style="width:540px"><div class="modal-h"><h3>Flags</h3><div class="spacer"></div><button class="btn sm" id="flAdd">＋ New flag</button></div>'+
+    '<div class="modal-b" id="flBody"></div>'+
+    '<div class="modal-f"><span class="mini" style="margin-right:auto">Hide a branch in Advanced ▸ <b>Branch shown when</b>; reveal it later with <b>⚑ Set flag</b> in a focus reward.</span><button class="btn primary" id="flDone">Done</button></div></div>';
+  document.body.appendChild(veil);
+  veil.onclick=e=>{ if(e.target===veil) closeFlags(); };
+  $("#flDone").onclick=closeFlags;
+  $("#flAdd").onclick=()=>{ P.flags.push({key:"", scope:"country", note:""}); persist(); renderFlags(); };
+  renderFlags();
+}
+function closeFlags(){ const v=$("#flagVeil"); if(v) v.remove(); if(previewOn) renderPreviewBar(); render(); if(sel.size) renderPanel(); }
+function renderFlags(){
+  const b=$("#flBody"); if(!b) return;
+  if(!P.flags.length){ b.innerHTML='<div class="mini">No flags yet. A flag is a named on/off switch (has_country_flag / has_global_flag) that shows or hides a focus branch.</div>'; return; }
+  b.innerHTML=P.flags.map((fl,i)=>'<div class="flagchip">'+
+    '<input class="inp mono" data-fk="'+i+'" value="'+esc(fl.key)+'" placeholder="flag_name" style="flex:2 1 0">'+
+    '<span class="seg"><button data-fsc="'+i+'" data-v="country" class="'+(fl.scope!=="global"?"on":"")+'">country</button><button data-fsc="'+i+'" data-v="global" class="'+(fl.scope==="global"?"on":"")+'">global</button></span>'+
+    '<input class="inp" data-fn="'+i+'" value="'+esc(fl.note||"")+'" placeholder="note" style="flex:2 1 0">'+
+    '<button class="btn sm danger" data-fdel="'+i+'">×</button></div>').join("");
+  b.querySelectorAll("[data-fk]").forEach(e=>e.oninput=()=>{ P.flags[+e.dataset.fk].key=e.value.trim().replace(/\s+/g,"_"); persist(); });
+  b.querySelectorAll("[data-fn]").forEach(e=>e.oninput=()=>{ P.flags[+e.dataset.fn].note=e.value; persist(); });
+  b.querySelectorAll("[data-fsc]").forEach(bt=>bt.onclick=()=>{ P.flags[+bt.dataset.fsc].scope=bt.dataset.v; persist(); renderFlags(); });
+  b.querySelectorAll("[data-fdel]").forEach(e=>e.onclick=()=>{ P.flags.splice(+e.dataset.fdel,1); persist(); renderFlags(); });
+}
+function branchFlagHTML(f){
+  const cur=branchFlagOf(f);
+  const custom=(f.allowBranch||"").trim() && !cur;
+  let opts='<option value="">— always shown —</option>';
+  P.flags.forEach(fl=>{ if(!fl.key) return; const val=fl.scope+":"+fl.key; opts+='<option value="'+esc(val)+'"'+(cur&&cur.scope===fl.scope&&cur.key===fl.key?" selected":"")+'>'+esc(fl.key)+' ('+fl.scope+')</option>'; });
+  return '<div class="fld"><label>Branch shown when (hidden focus)</label>'+
+    '<select class="inp" id="aBranchFlag"'+(custom?" disabled":"")+'>'+opts+'</select>'+
+    '<div class="hint">'+(custom?"allow_branch has custom script — edit it below.":"Hides this focus until a flag is set. Manage flags with ⚑ Flags; set one from another focus's reward via ⚑ Set flag.")+'</div></div>';
+}
+function openSetFlagPicker(anchor, textarea, f){
+  closePicker();
+  const el=document.createElement("div"); el.className="pick"; pickerEl=el;
+  const items=P.flags.filter(fl=>fl.key).map(fl=>'<div class="pick-item" data-fl="'+esc(fl.scope+":"+fl.key)+'"><div class="pn">set_'+fl.scope+'_flag = '+esc(fl.key)+'</div><div class="pd">'+esc(fl.note||"")+'</div></div>').join("")
+    || '<div class="pick-item"><div class="pd">No flags yet — add one with ⚑ Flags.</div></div>';
+  el.innerHTML='<div class="pick-top"><b style="font-size:12px">Set a flag</b></div><div class="pick-list">'+items+'</div>';
+  document.body.appendChild(el);
+  const r=anchor.getBoundingClientRect(); el.style.left=Math.min(r.left,window.innerWidth-360)+"px"; el.style.top=(r.bottom+4)+"px";
+  el.querySelectorAll("[data-fl]").forEach(it=>it.onclick=()=>{ const p=it.dataset.fl.split(":"); insertAtCursor(textarea,"set_"+p[0]+"_flag = "+p[1]); f.reward=textarea.value; closePicker(); });
+}
+
+/* ---- branch preview ---- */
+let previewOn=false, previewFlags=new Set();
+function togglePreview(){
+  previewOn=!previewOn;
+  $("#bPreview").classList.toggle("active", previewOn);
+  if(previewOn){ renderPreviewBar(); $("#previewBar").classList.add("on"); }
+  else $("#previewBar").classList.remove("on");
+  applyPreview();
+}
+function renderPreviewBar(){
+  const bar=$("#previewBar"), flags=P.flags.filter(fl=>fl.key);
+  bar.innerHTML='<h5>Preview branches</h5>'+
+    (flags.length? flags.map(fl=>'<label><input type="checkbox" data-pf="'+esc(fl.key)+'"'+(previewFlags.has(fl.key)?" checked":"")+'> '+esc(fl.key)+'</label>').join("")
+      : '<div class="mini">No flags. Add some with ⚑ Flags.</div>')+
+    '<div class="mini" style="margin-top:6px">Unchecked = its branch is hidden.</div>';
+  bar.querySelectorAll("[data-pf]").forEach(cb=>cb.onchange=()=>{ if(cb.checked) previewFlags.add(cb.dataset.pf); else previewFlags.delete(cb.dataset.pf); applyPreview(); });
+}
+function applyPreview(){
+  document.querySelectorAll(".node").forEach(n=>{
+    let hidden=false;
+    if(previewOn){ const f=byId(n.dataset.id); const bf=f&&branchFlagOf(f); if(bf && !previewFlags.has(bf.key)) hidden=true; }
+    n.classList.toggle("hidden-preview", hidden);
+  });
+}
+
+/* ---- global search ---- */
+function focusOn(id){
+  const f=byId(id); if(!f) return;
+  const rect=stage.getBoundingClientRect();
+  view.x=rect.width/2-(cellLeft(f.x)+NW/2)*view.z;
+  view.y=rect.height/2-(cellTop(f.y)+NH/2)*view.z;
+  applyTransform();
+}
+function searchText(f){
+  return [f.name,f.key,f.reward,f.available,f.aiWillDo,f.selectEffect,f.bypass,f.completeTooltip,f.allowBranch,f.extra,(f.searchFilters||[]).join(" ")].join(" ").toLowerCase();
+}
+function runSearch(q){
+  q=(q||"").trim().toLowerCase();
+  const res=$("#searchRes");
+  document.querySelectorAll(".node.hit").forEach(n=>n.classList.remove("hit"));
+  if(!q){ if(res){ res.hidden=true; res.innerHTML=""; } return; }
+  const hits=P.focuses.filter(f=>searchText(f).indexOf(q)>=0);
+  const spirits=P.ideas.filter(i=>((i.name||"")+" "+ideaKey(i)+" "+(i.mods||[]).map(m=>m.k).join(" ")).toLowerCase().indexOf(q)>=0);
+  hits.forEach(f=>{ const n=$('.node[data-id="'+f.id+'"]'); if(n) n.classList.add("hit"); });
+  let html="";
+  if(!hits.length && !spirits.length) html='<div class="none">No matches.</div>';
+  hits.slice(0,80).forEach(f=>{ html+='<div class="sr" data-go="'+f.id+'"><div class="sn">'+esc(f.name||focusKey(f))+(f.external?' <span class="sw">external</span>':'')+'</div><div class="sk">'+esc(focusKey(f))+'</div></div>'; });
+  spirits.slice(0,20).forEach(i=>{ html+='<div class="sr" data-spirit="1"><div class="sn">'+esc(i.name||ideaKey(i))+' <span class="sw">spirit</span></div><div class="sk">'+esc(ideaKey(i))+'</div></div>'; });
+  res.innerHTML=html; res.hidden=false;
+  res.querySelectorAll("[data-go]").forEach(el=>el.onclick=()=>{ const id=el.dataset.go; select(id); focusOn(id); res.hidden=true; });
+  res.querySelectorAll("[data-spirit]").forEach(el=>el.onclick=()=>{ res.hidden=true; openIdeas(); });
+}
+
+/* =====================================================================
    15. Wire up + init
    ===================================================================== */
 function addFocusAt(px, py){
@@ -2146,6 +2363,14 @@ $("#bAdd").onclick=()=>addFocusAt();
 $("#bPre").onclick=()=>setLinkMode("pre");
 $("#bMx").onclick=()=>setLinkMode("mx");
 $("#bIdeas").onclick=openIdeas;
+$("#bFlags").onclick=openFlags;
+$("#bPreview").onclick=togglePreview;
+$("#searchInput").oninput=e=>runSearch(e.target.value);
+$("#searchInput").onkeydown=e=>{
+  if(e.key==="Escape"){ e.target.value=""; runSearch(""); e.target.blur(); }
+  if(e.key==="Enter"){ const first=$("#searchRes .sr[data-go]"); if(first) first.click(); }
+};
+document.addEventListener("click", e=>{ if(!e.target.closest("#searchWrap")){ const r=$("#searchRes"); if(r) r.hidden=true; } });
 $("#bExport").onclick=()=>exportAll(false);
 $("#bImport").onclick=openImport;
 $("#bSave").onclick=saveProject;
@@ -2172,6 +2397,7 @@ document.addEventListener("keydown", e=>{
   // undo / redo — leave text fields to the browser's own undo
   if((e.ctrlKey||e.metaKey) && (e.key==="z"||e.key==="Z") && !typing){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); return; }
   if((e.ctrlKey||e.metaKey) && (e.key==="y"||e.key==="Y") && !typing){ e.preventDefault(); redo(); return; }
+  if((e.ctrlKey||e.metaKey) && (e.key==="a"||e.key==="A") && !typing){ e.preventDefault(); selectAll(); return; }
   if(e.key==="Escape"){ if(linkMode){ setLinkMode(linkMode); } closePicker(); if(sel.size) select(null); }
   if((e.key==="Delete"||e.key==="Backspace") && sel.size && !typing){
     e.preventDefault(); delMany([...sel]);
