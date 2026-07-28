@@ -156,6 +156,27 @@ svg.links{position:absolute; inset:0; pointer-events:none; overflow:visible}
 .previewbar.on{display:block}
 .previewbar h5{margin:0 0 6px; font-size:12px}
 .previewbar label{display:flex; gap:7px; align-items:center; font-size:12px; margin:3px 0; font-family:var(--font-mono)}
+/* ---- code editor ---- */
+:root{ --syn-com:#8A9199; --syn-str:#3E6B4A; --syn-num:#A9581F; --syn-eff:#2E5C8A; --syn-trig:#8A6A18; --syn-mod:#7A3FA0; --syn-tag:#A33A2A; --syn-bool:#3E6B4A; --syn-punct:#8A9199; }
+body.theme-dark{ --syn-com:#7b838d; --syn-str:#7bc994; --syn-num:#e0a45f; --syn-eff:#7aa7e6; --syn-trig:#d8b45c; --syn-mod:#c79ce8; --syn-tag:#e79080; --syn-bool:#7bc994; --syn-punct:#8b939d; }
+.code{display:flex; flex-direction:column; height:100%; min-height:0; width:100%; border:1px solid var(--line2); border-radius:var(--r); overflow:hidden; background:var(--card)}
+.code-toolbar{display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--line); background:var(--sunk); flex:0 0 auto}
+.code-status{margin-left:auto; font-size:12px}
+.code-status .err{color:var(--bad); font-weight:600} .code-status .warn{color:var(--warn); font-weight:600} .code-status .ok{color:var(--ok)}
+.code-body{flex:1 1 auto; display:flex; min-height:0; position:relative; font-family:var(--font-mono); font-size:12.5px; line-height:1.55}
+.code-gutter{flex:0 0 auto; width:44px; overflow:hidden; text-align:right; color:var(--ink3); background:var(--sunk); border-right:1px solid var(--line); padding:8px 6px 8px 0; white-space:pre; user-select:none}
+.code-gutter .gl{display:block}
+.code-gutter .gl.e{color:var(--bad); font-weight:700} .code-gutter .gl.w{color:var(--warn); font-weight:700}
+.code-editarea{flex:1 1 auto; position:relative; overflow:hidden}
+.code-hl, .code-ta{margin:0; border:0; padding:8px 10px; font:inherit; line-height:inherit; white-space:pre; tab-size:4; -moz-tab-size:4; position:absolute; inset:0; box-sizing:border-box}
+.code-hl{pointer-events:none; color:var(--ink); background:transparent; overflow:hidden}
+.code-hl code{font:inherit; white-space:pre}
+.code-ta{background:transparent; color:transparent; caret-color:var(--ink); resize:none; outline:none; overflow:auto}
+.code-ta::selection{background:rgba(46,92,138,.28)}
+.tok-com{color:var(--syn-com); font-style:italic} .tok-str{color:var(--syn-str)} .tok-num{color:var(--syn-num)}
+.tok-eff{color:var(--syn-eff); font-weight:600} .tok-trig{color:var(--syn-trig); font-weight:600} .tok-mod{color:var(--syn-mod); font-weight:600}
+.tok-tag{color:var(--syn-tag); font-weight:600} .tok-bool{color:var(--syn-bool)} .tok-punct{color:var(--syn-punct)}
+.code-legend{flex:0 0 auto; font-size:10px; color:var(--ink3); padding:4px 8px; border-top:1px solid var(--line); display:flex; gap:12px; flex-wrap:wrap}
 
 .stage-hint{position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);
   text-align:center; color:var(--ink3); font-size:14px; pointer-events:none; width:70%}
@@ -339,9 +360,11 @@ a{color:var(--accent2)}
         <div class="tabs">
           <button class="tab on" data-tab="basic">Essentials</button>
           <button class="tab" data-tab="adv">Advanced<span class="dot"></span></button>
+          <button class="tab" data-tab="script" title="Edit the whole focus as script">&lt;/&gt; Script</button>
         </div>
         <div class="panel-scroll" id="tabBasic"></div>
         <div class="panel-scroll" id="tabAdv" style="display:none"></div>
+        <div class="panel-scroll" id="tabScript" style="display:none; padding:0"></div>
       </div>
       <div id="panelMulti" style="display:none; flex:1 1 auto; min-height:0; flex-direction:column">
         <div class="panel-head">
@@ -649,7 +672,7 @@ const SAVE_KEY_OLD="ftc_project_v1";
 function defMeta(){ return { mod:"", tag:"USA", start:"2025.1.1", dpc:7, treeId:"" }; }
 function defSettings(){ return { panelSide:"right", wheel:"zoom", webIcons:true, showGrid:true, showDates:true, theme:"light", aprchaos:false,
   newFocus:"double", dragSelect:false, bulkCost:true, bulkMutex:true, bulkApr:false, bulkIcon:false,
-  advLabel:"auto", tallNodes:false, panelW:380, searchBar:true }; }
+  advLabel:"auto", tallNodes:false, panelW:380, searchBar:true, scriptParse:"valid" }; }
 let P = { meta:defMeta(), focuses:[], ideas:[], icons:{}, flags:[], settings:defSettings() };
 let selId=null, sel=new Set(), view={z:1,x:0,y:0};
 
@@ -830,7 +853,7 @@ function render(){
   drawLinks();
   $("#stageHint").style.display = P.focuses.length ? "none":"block";
   syncTopbar();
-  if(previewOn) applyPreview();
+  applyPreview();
   persist();
 }
 
@@ -922,11 +945,14 @@ function renderPanel(){
   $("#pKeyEcho").textContent=focusKey(f);
   $$(".tab").forEach(t=>{
     t.classList.toggle("on", t.dataset.tab===activeTab);
-    if(t.dataset.tab==="adv"){ t.classList.toggle("hasadv", focusHasAdv(f)); t.innerHTML=esc(advLabelText(f,false))+'<span class="dot"></span>'; }
+    if(t.dataset.tab==="adv"){ t.classList.toggle("hasadv", focusHasAdv(f)); }
   });
   $("#tabBasic").style.display=activeTab==="basic"?"block":"none";
   $("#tabAdv").style.display=activeTab==="adv"?"block":"none";
-  if(activeTab==="basic") renderBasic(f); else renderAdv(f);
+  $("#tabScript").style.display=activeTab==="script"?"flex":"none";
+  if(activeTab==="script") renderScript(f);
+  else if(activeTab==="adv") renderAdv(f);
+  else renderBasic(f);
 }
 
 function focusKey(f){
@@ -1163,7 +1189,7 @@ function renderAdv(f){
     if(btn){ const mode=btn.dataset.mode; btn.onclick=e=>openScriptPicker(e.currentTarget, ta, mode, f, k); }
   });
   const bf=$("#aBranchFlag");
-  if(bf) bf.onchange=()=>{ const v=bf.value; if(!v) f.allowBranch=""; else { const p=v.split(":"); f.allowBranch="has_"+p[0]+"_flag = "+p[1]; } markAdvTab(f); renderAdv(f); if(previewOn) applyPreview(); };
+  if(bf) bf.onchange=()=>{ const v=bf.value; if(!v) f.allowBranch=""; else { const p=v.split(":"); f.allowBranch="has_"+p[0]+"_flag = "+p[1]; } markAdvTab(f); renderAdv(f); applyPreview(); };
   $("#aRel").onchange=e=>{ f.relTo=e.target.value; markAdvTab(f); render(); };
   bindText("#aWar", v=>{ f.willWarWith=v.toUpperCase().replace(/[^A-Z]/g,"").slice(0,3); markAdvTab(f); });
   el.querySelectorAll("[data-sf]").forEach(cb=> cb.onchange=()=>{
@@ -1179,7 +1205,7 @@ function renderAdv(f){
 }
 function markAdvTab(f){
   const t=$$(".tab").find(x=>x.dataset.tab==="adv");
-  if(t){ t.classList.toggle("hasadv",focusHasAdv(f)); t.innerHTML=esc(advLabelText(f,false))+'<span class="dot"></span>'; }
+  if(t){ t.classList.toggle("hasadv",focusHasAdv(f)); }
   const n=$('.node[data-id="'+f.id+'"]'); if(n){ n.classList.toggle("hasadv",focusHasAdv(f)); const bd=n.querySelector(".badge"); if(bd) bd.textContent=advLabelText(f,true); }
   persist();
 }
@@ -1286,6 +1312,7 @@ function startPan(e){
   document.addEventListener("mousemove",mv,true); document.addEventListener("mouseup",up,true);
 }
 stage.addEventListener("mousedown", e=>{
+  if(e.target.closest("#previewBar, .zoombar, .linkbanner, .marquee")) return;   // overlays handle their own clicks
   const onNode=e.target.closest(".node");
   if(e.button===1){ e.preventDefault(); startPan(e); return; }      // middle always pans
   if(e.button===0 && !onNode && !linkMode){
@@ -1296,7 +1323,9 @@ stage.addEventListener("mousedown", e=>{
 });
 // double-click empty canvas to drop a new focus (gesture switchable in Settings)
 stage.addEventListener("dblclick", e=>{
-  if(e.target.closest(".node") || linkMode) return;
+  if(linkMode) return;
+  if(!e.target.closest("#board")) return;   // only the empty canvas creates — never the preview/zoom overlays
+  if(e.target.closest(".node")) return;
   const g=P.settings.newFocus;
   if(g==="double" || (g==="shiftdouble" && e.shiftKey)) createFocusAtClient(e.clientX, e.clientY);
 });
@@ -1942,7 +1971,8 @@ function openSettings(){
       row("Dates on focuses","Show the days / completion date under each focus.", seg("showDates",[[true,"On"],[false,"Off"]]))+
       row("Tall focuses","Let focus boxes grow taller so long names show in full.", seg("tallNodes",[[true,"On"],[false,"Off"]]))+
       row("Search bar","Show the search box in the toolbar.", seg("searchBar",[[true,"On"],[false,"Off"]]))+
-      row("Advanced tab label","Auto shows the search-filter name until other advanced options are set (then 'Advanced'). Or force filter-only, Advanced-only, or both.", seg("advLabel",[["auto","Auto"],["filter","Filter"],["advanced","Advanced"],["both","Both"]]))+
+      row("Focus badge label","What the gold badge on a focus shows. Auto = the search-filter name until other advanced options are set (then 'adv').", seg("advLabel",[["auto","Auto"],["filter","Filter"],["advanced","Advanced"],["both","Both"]]))+
+      row("Script sync","In a focus's Script tab, apply edits back to the tool only when the script parses cleanly, or live on every keystroke.", seg("scriptParse",[["valid","On valid"],["live","Live"]]))+
       row("Approval & chaos","Per-focus approval/chaos controls that write USA_apr_add / USA_chaos_add and feed the story-planner curve — like the Event Maker.", seg("aprchaos",[[true,"On"],[false,"Off"]]))+
       row("New focus","How to create a focus on the canvas (the ＋ Focus button always works too).", seg("newFocus",[["double","Dbl-click"],["shiftdouble","Shift+dbl"],["key","N key"]]))+
       row("Marquee select","Drag on empty canvas to box-select; panning then uses middle-mouse or the wheel.", seg("dragSelect",[[false,"Off"],[true,"On"]]))+
@@ -2205,22 +2235,262 @@ $("#panelGrip").addEventListener("mousedown", e=>{
   document.addEventListener("mousemove",mv,true); document.addEventListener("mouseup",up,true);
 });
 
-/* ---- pop-out large editor for one script field ---- */
-function bigEdit(f, field, title, mode){
+/* =====================================================================
+   Code editor — line numbers, syntax colours, pragmatic linter
+   ===================================================================== */
+const EFFECT_SET=new Set(), TRIGGER_SET=new Set(), MOD_SET=new Set();
+EFFECTS.forEach(([g,items])=>items.forEach(it=>{ const m=/^([a-z_][a-z0-9_]*)/.exec(it[1]); if(m) EFFECT_SET.add(m[1]); }));
+TRIGGERS.forEach(([g,items])=>items.forEach(it=>{ const m=/^([a-z_][a-z0-9_]*)/.exec(it[1]); if(m) TRIGGER_SET.add(m[1]); }));
+MODIFIERS.forEach(([g,items])=>items.forEach(it=>MOD_SET.add(it[0])));
+const STRUCT_KEYS=new Set(("id icon x y cost prerequisite focus mutually_exclusive relative_position_id available bypass "+
+  "select_effect completion_reward complete_tooltip ai_will_do allow_branch search_filters will_lead_to_war_with "+
+  "available_if_capitulated cancel_if_invalid continue_if_invalid dynamic offset text default reset_on_civilwar "+
+  "continuous_focus_position initial_show_position shared_focus focus_tree country factor modifier add tag value days "+
+  "limit trigger if else else_if hidden_effect custom_effect_tooltip set_temp_variable name long_name ideology popularity "+
+  "ruling_party last_election election_frequency elections_allowed type target amount producer province level instant_build "+
+  "state rule option progress ideas idea removal_cost allowed picture on_add on_remove targeted_modifier equipment_bonus "+
+  "research_bonus bonus uses category prioritize random random_list count all any_of hours random_hours random_days").split(/\s+/));
+const KNOWN_KEYS=new Set([...EFFECT_SET,...TRIGGER_SET,...STRUCT_KEYS]);
+function classifyWord(w){
+  let cls="";
+  if(w==="yes"||w==="no") cls="tok-bool";
+  else if(/^(ROOT|FROM|THIS|PREV|OWNER|CONTROLLER|OVERLORD|TAG|OR|AND|NOT)$/.test(w) || /^[A-Z]{2,3}$/.test(w)) cls="tok-tag";
+  else if(MOD_SET.has(w)) cls="tok-mod";
+  else if(EFFECT_SET.has(w)) cls="tok-eff";
+  else if(TRIGGER_SET.has(w)) cls="tok-trig";
+  return cls?'<span class="'+cls+'">'+esc(w)+'</span>':esc(w);
+}
+function highlightScript(src){
+  const re=/(#[^\n]*)|("(?:[^"\\]|\\.)*"?)|(-?\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_.]*)|([{}=<>])|(\s+)|([^\s])/g;
+  let out="", m;
+  while((m=re.exec(src))){
+    if(m[1]) out+='<span class="tok-com">'+esc(m[1])+'</span>';
+    else if(m[2]) out+='<span class="tok-str">'+esc(m[2])+'</span>';
+    else if(m[3]) out+='<span class="tok-num">'+esc(m[3])+'</span>';
+    else if(m[4]) out+=classifyWord(m[4]);
+    else if(m[5]) out+='<span class="tok-punct">'+m[5].replace(/</g,"&lt;").replace(/>/g,"&gt;")+'</span>';
+    else out+=esc(m[0]);
+  }
+  return out;
+}
+/* pragmatic linter → [{line, level:'error'|'warn', msg}] */
+function lintScript(text, f){
+  const out=[], lines=text.split("\n");
+  const indentOf=ln=>(ln.match(/^[ \t]*/)[0].replace(/\t/g,"    ")).length;
+  // ---- brace + quote balance, tracking where each { was opened
+  let inStr=false; const stack=[];
+  for(let li=0; li<lines.length; li++){
+    const ln=lines[li]; let q=0;
+    for(let i=0;i<ln.length;i++){
+      const c=ln[i];
+      if(inStr){ if(c==="\\"){ i++; continue; } if(c==='"') inStr=false; continue; }
+      if(c==="#") break;
+      if(c==='"'){ inStr=true; q++; continue; }
+      if(c==="{") stack.push({line:li+1, indent:indentOf(ln)});
+      else if(c==="}"){ if(stack.length) stack.pop(); else out.push({line:li+1, level:"error", msg:"unexpected '}' — there's no open '{' for it to close"}); }
+    }
+    if(q%2===1){ out.push({line:li+1, level:"error", msg:"unterminated string (odd number of quotes on this line)"}); inStr=false; }
+  }
+  // any '{' still open never got a '}' — guess where it belongs from indentation
+  stack.forEach(op=>{
+    let g=0;
+    for(let i=op.line; i<lines.length; i++){ if(!lines[i].trim()) continue; if(indentOf(lines[i])<=op.indent){ g=i+1; break; } }
+    out.push({line:op.line, level:"error", msg:"this '{' is never closed — a '}' is likely missing "+(g?("just before line "+g):"at the end of the script")});
+  });
+  // ---- a key followed by a stray operator instead of '=' (e.g. add_political_power - 75)
+  for(let li=0; li<lines.length; li++){
+    const raw=lines[li].replace(/#.*$/,"");
+    const m=/([A-Za-z_][A-Za-z0-9_]*)\s+([-+*\/])\s/.exec(raw);
+    if(m) out.push({line:li+1, level:"error", msg:"'"+m[1]+" "+m[2]+"' — use '=' to assign (e.g. "+m[1]+" = …)"});
+  }
+  // focus references that aren't in the tree (only reliable in a focus context).
+  // NOTE: no blanket "unknown keyword" check — HOI4 has thousands of valid
+  // effects/triggers plus mod scripted-effects, so that only produced noise.
+  const existing = f ? new Set(P.focuses.filter(x=>x!==f).map(x=>focusKey(x))) : null;
+  if(existing){
+    for(let li=0; li<lines.length; li++){
+      const raw=lines[li].replace(/#.*$/,"");
+      let fr; const fre=/\bfocus\s*=\s*([A-Za-z0-9_]+)/g;
+      while((fr=fre.exec(raw))){ if(!existing.has(fr[1]) && fr[1]!==focusKey(f)) out.push({line:li+1, level:"warn", msg:"focus '"+fr[1]+"' isn't in this tree (won't link on the canvas)"}); }
+    }
+  }
+  if(f){
+    const idm=/(^|\s)id\s*=\s*([A-Za-z0-9_]+)/.exec(text);
+    if(idm && existing && existing.has(idm[2])) out.push({line:(text.slice(0,idm.index).split("\n").length), level:"error", msg:"duplicate id — another focus already uses '"+idm[2]+"'"});
+  }
+  return out;
+}
+function makeCodeEditor(opts){
+  const wrap=document.createElement("div"); wrap.className="code";
+  wrap.innerHTML=
+    '<div class="code-toolbar">'+(opts.pickerBtn?'<button class="btn sm" data-cpick>＋ '+(opts.mode==="trig"?"Trigger":"Effect")+'…</button>':'')+
+      '<span class="code-status"></span></div>'+
+    '<div class="code-body"><div class="code-gutter"></div><div class="code-editarea">'+
+      '<pre class="code-hl"><code></code></pre><textarea class="code-ta" spellcheck="false" wrap="off"></textarea></div></div>'+
+    '<div class="code-legend"><span class="tok-eff">effect</span><span class="tok-trig">trigger</span><span class="tok-mod">modifier</span><span class="tok-tag">TAG / scope</span><span class="tok-num">number</span><span class="tok-str">"text"</span></div>';
+  const ta=wrap.querySelector(".code-ta"), code=wrap.querySelector(".code-hl code"), pre=wrap.querySelector(".code-hl"),
+        gutter=wrap.querySelector(".code-gutter"), status=wrap.querySelector(".code-status");
+  function syncScroll(){ pre.scrollTop=ta.scrollTop; pre.scrollLeft=ta.scrollLeft; gutter.scrollTop=ta.scrollTop; }
+  function paint(){
+    const v=ta.value;
+    code.innerHTML=highlightScript(v)+"\n";
+    const markers=opts.lint?opts.lint(v):[];
+    const byLine={}; markers.forEach(mk=>{ if(!byLine[mk.line] || mk.level==="error") byLine[mk.line]=mk; });
+    const n=v.split("\n").length; let g="";
+    for(let i=1;i<=n;i++){ const mk=byLine[i]; g+='<span class="gl'+(mk?(mk.level==="error"?" e":" w"):"")+'"'+(mk?' title="'+esc(mk.msg)+'"':'')+'>'+i+'</span>'; }
+    gutter.innerHTML=g;
+    const errs=markers.filter(m=>m.level==="error").length, warns=markers.length-errs;
+    status.innerHTML = errs? '<span class="err">'+errs+' error'+(errs>1?"s":"")+'</span>'+(warns?' · <span class="warn">'+warns+' warning'+(warns>1?"s":"")+'</span>':'')
+      : warns? '<span class="warn">'+warns+' warning'+(warns>1?"s":"")+'</span>' : '<span class="ok">✓ no issues</span>';
+    syncScroll();
+  }
+  ta.addEventListener("input",()=>{ paint(); if(opts.onChange) opts.onChange(ta.value); });
+  ta.addEventListener("scroll", syncScroll);
+  // Tab / Shift+Tab: indent the selection like VS Code (execInsert keeps native undo)
+  function execInsert(txt){ if(!document.execCommand||!document.execCommand("insertText",false,txt)){ const s=ta.selectionStart,e=ta.selectionEnd,v=ta.value; ta.value=v.slice(0,s)+txt+v.slice(e); ta.selectionStart=ta.selectionEnd=s+txt.length; } paint(); if(opts.onChange) opts.onChange(ta.value); }
+  ta.addEventListener("keydown", e=>{
+    if(e.key!=="Tab") return;
+    e.preventDefault();
+    const v=ta.value, s=ta.selectionStart, en=ta.selectionEnd;
+    if(!e.shiftKey && s===en){ execInsert("\t"); return; }
+    const ls=v.lastIndexOf("\n", s-1)+1;
+    const effEnd=(en>s && v[en-1]==="\n") ? en-1 : en;
+    let le=v.indexOf("\n", effEnd); if(le===-1) le=v.length;
+    const block=v.slice(ls,le).split("\n");
+    const nb=(e.shiftKey ? block.map(l=> l.startsWith("\t")?l.slice(1):l.replace(/^ {1,4}/,"")) : block.map(l=> l===""?l:"\t"+l)).join("\n");
+    ta.selectionStart=ls; ta.selectionEnd=le;
+    execInsert(nb);
+    ta.selectionStart=ls; ta.selectionEnd=ls+nb.length;
+  });
+  const pb=wrap.querySelector("[data-cpick]"); if(pb) pb.onclick=ev=>opts.onPicker&&opts.onPicker(ev.currentTarget, ta);
+  ta.value=opts.initial||"";
+  requestAnimationFrame(paint);
+  return { el:wrap, ta, getValue:()=>ta.value, setValue:v=>{ ta.value=v; paint(); }, refresh:paint };
+}
+
+/* ---- floating, draggable, resizable pop-out editor (shared) ---- */
+function floatEditor(o){
   closePicker();
   const veil=document.createElement("div"); veil.className="veil"; veil.id="bigVeil";
-  veil.innerHTML='<div class="modal" style="width:780px; height:82vh"><div class="modal-h"><h3>'+esc(title)+'</h3>'+
-    (mode?'<div class="spacer"></div><button class="btn sm" id="bigAdd">＋ '+(mode==="trig"?"Trigger":"Effect")+'…</button>':'')+
-    '</div><div class="modal-b" style="flex:1 1 auto; display:flex; padding:12px"><textarea id="bigTA" class="inp mono" style="flex:1 1 auto; height:100%; min-height:0; white-space:pre">'+esc(f[field]||"")+'</textarea></div>'+
-    '<div class="modal-f"><button class="btn primary" id="bigDone">Done</button></div></div>';
-  document.body.appendChild(veil);
-  const ta=$("#bigTA");
-  ta.addEventListener("input",()=>{ f[field]=ta.value; if(field!=="reward") markAdvTab(f); persist(); });
-  if(mode) $("#bigAdd").onclick=ev=>openScriptPicker(ev.currentTarget, ta, mode, f, field);
-  const close=()=>{ veil.remove(); renderPanel(); };
-  $("#bigDone").onclick=close;
+  const modal=document.createElement("div"); modal.className="modal";
+  const bw=store.get("ftc_bigW"), bh=store.get("ftc_bigH");
+  modal.style.width=(bw?bw+"px":"840px"); modal.style.height=(bh?bh+"px":"82vh");
+  modal.style.resize="both"; modal.style.overflow="hidden"; modal.style.minWidth="440px"; modal.style.minHeight="260px";
+  modal.innerHTML='<div class="modal-h" id="bigHead" style="cursor:move"><h3>'+esc(o.title||"Editor")+'</h3><span class="mini" style="margin-left:8px">drag the header to move · corner to resize</span><div class="spacer"></div><button class="btn sm" id="bigDone">Done</button></div>';
+  const body=document.createElement("div"); body.className="modal-b"; body.style.cssText="flex:1 1 auto; display:flex; padding:12px; min-height:0";
+  const ed=makeCodeEditor({ initial:o.initial||"", mode:o.mode||"fx", pickerBtn:true, lint:o.lint||(t=>lintScript(t)),
+    onPicker:(a,ta)=>openScriptPicker(a, ta, o.mode||"fx", {}, "_"),
+    onChange:o.onChange });
+  body.appendChild(ed.el); modal.appendChild(body); veil.appendChild(modal); document.body.appendChild(veil);
+  modal.style.position="absolute"; modal.style.margin="0";
+  let px=parseFloat(store.get("ftc_bigX")), py=parseFloat(store.get("ftc_bigY"));
+  if(isNaN(px)) px=(window.innerWidth-modal.offsetWidth)/2;
+  if(isNaN(py)) py=Math.max(12,(window.innerHeight-modal.offsetHeight)/2);
+  px=Math.max(0,Math.min(px, window.innerWidth-140)); py=Math.max(0,Math.min(py, window.innerHeight-60));
+  modal.style.left=px+"px"; modal.style.top=py+"px";
+  modal.querySelector("#bigHead").addEventListener("mousedown", e=>{
+    if(e.target.closest("button")) return;
+    e.preventDefault();
+    const sx=e.clientX, sy=e.clientY, ox=modal.offsetLeft, oy=modal.offsetTop;
+    function mv(ev){ let nx=ox+(ev.clientX-sx), ny=oy+(ev.clientY-sy);
+      nx=Math.max(0,Math.min(nx, window.innerWidth-140)); ny=Math.max(0,Math.min(ny, window.innerHeight-60));
+      modal.style.left=nx+"px"; modal.style.top=ny+"px"; }
+    function up(){ document.removeEventListener("mousemove",mv,true); document.removeEventListener("mouseup",up,true); try{ store.set("ftc_bigX",modal.offsetLeft); store.set("ftc_bigY",modal.offsetTop); }catch(e){} }
+    document.addEventListener("mousemove",mv,true); document.addEventListener("mouseup",up,true);
+  });
+  const close=()=>{ try{ store.set("ftc_bigW", modal.offsetWidth); store.set("ftc_bigH", modal.offsetHeight); }catch(e){} veil.remove(); if(o.onClose) o.onClose(); };
+  modal.querySelector("#bigDone").onclick=close;
   veil.onclick=e=>{ if(e.target===veil) close(); };
-  ta.focus();
+  ed.ta.focus();
+  return ed;
+}
+/* one script field */
+function bigEdit(f, field, title, mode){
+  floatEditor({ title, initial:f[field]||"", mode:mode||"fx", lint:t=>lintScript(t),
+    onChange:v=>{ f[field]=v; if(field!=="reward") markAdvTab(f); persist(); }, onClose:renderPanel });
+}
+/* the whole focus (same window as the effect blocks) */
+function bigEditScript(f){
+  floatEditor({ title:"Focus script — "+(f.name||focusKey(f)), initial:focusToScript(f), mode:"fx", lint:t=>lintScript(t, f),
+    onChange:t=>{ clearTimeout(scriptSyncTimer); scriptSyncTimer=setTimeout(()=>{
+        if(lintScript(t, f).some(m=>m.level==="error") && P.settings.scriptParse!=="live") return;
+        if(scriptToFocus(t, f)) render();
+      }, 250); },
+    onClose:renderPanel });
+}
+
+/* =====================================================================
+   Full per-focus Script mode — edit the whole focus, synced to the tool
+   ===================================================================== */
+function focusToScript(f){
+  let s="### name: "+(f.name||"")+"\n### desc: "+((f.desc||"").replace(/\n/g,"\\n"))+"\n";
+  s+="focus = {\n\tid = "+focusKey(f)+"\n";
+  if(f.iconBlock && f.iconBlock.trim()) s+=block("icon", f.iconBlock, 1); else s+="\ticon = "+(f.icon||"GFX_goal_unknown")+"\n";
+  s+="\tx = "+f.x+"\n\ty = "+f.y+"\n";
+  if(f.relTo && byId(f.relTo)) s+="\trelative_position_id = "+focusKey(byId(f.relTo))+"\n";
+  s+="\tcost = "+(f.cost||0)+"\n";
+  if(f.prereqRaw && f.prereqRaw.length) f.prereqRaw.forEach(r=>s+="\tprerequisite = { "+String(r).trim().replace(/\s+/g," ")+" }\n");
+  else if(f.prereq && f.prereq.length){ const v=f.prereq.map(byId).filter(Boolean);
+    if(f.prereqMode==="any") s+="\tprerequisite = { "+v.map(p=>"focus = "+focusKey(p)).join(" ")+" }\n";
+    else v.forEach(p=>s+="\tprerequisite = { focus = "+focusKey(p)+" }\n"); }
+  if(f.mutex && f.mutex.length){ const v=f.mutex.map(byId).filter(Boolean); if(v.length) s+="\tmutually_exclusive = { "+v.map(p=>"focus = "+focusKey(p)).join(" ")+" }\n"; }
+  if(f.searchFilters && f.searchFilters.length) s+="\tsearch_filters = { "+f.searchFilters.join(" ")+" }\n";
+  if(f.willWarWith) s+="\twill_lead_to_war_with = "+f.willWarWith+"\n";
+  [["availCap","available_if_capitulated"],["cancelInvalid","cancel_if_invalid"],["contInvalid","continue_if_invalid"],["dynamic","dynamic"]].forEach(p=>{ if(f.flags[p[0]]) s+="\t"+p[1]+" = yes\n"; });
+  if((f.allowBranch||"").trim()) s+=block("allow_branch", f.allowBranch, 1);
+  if((f.available||"").trim()) s+=block("available", f.available, 1);
+  if((f.bypass||"").trim()) s+=block("bypass", f.bypass, 1);
+  if((f.selectEffect||"").trim()) s+=block("select_effect", f.selectEffect, 1);
+  s+=block("completion_reward", (f.reward||"").trim(), 1);
+  if((f.completeTooltip||"").trim()) s+=block("complete_tooltip", f.completeTooltip, 1);
+  if((f.aiWillDo||"").trim()) s+=block("ai_will_do", f.aiWillDo, 1);
+  if((f.extra||"").trim()) s+=ind(f.extra,1)+"\n";
+  s+="}\n";
+  return s;
+}
+function scriptToFocus(text, f){
+  let name=null, desc=null;
+  const nm=/^[ \t]*###[ \t]*name:[ \t]*(.*)$/m.exec(text); if(nm) name=nm[1].trim();
+  const dm=/^[ \t]*###[ \t]*desc:[ \t]*(.*)$/m.exec(text); if(dm) desc=dm[1].replace(/\\n/g,"\n");
+  const top=pdxEntries(stripComments(text));
+  const fe=top.find(e=>e.key==="focus" && e.block!=null);
+  if(!fe) return false;
+  const nf=parseFocus(fe.block);
+  if(!nf.key) return false;
+  if(name!=null) f.name=name; if(desc!=null) f.desc=desc;
+  ["key","icon","iconBlock","x","y","cost","searchFilters","flags","willWarWith","available","bypass","selectEffect","reward","completeTooltip","aiWillDo","allowBranch","extra","prereqRaw"].forEach(k=>{ f[k]=nf[k]; });
+  f.keyEdited=true;
+  const keymap={}; P.focuses.forEach(x=>{ if(x.id!==f.id) keymap[focusKey(x)]=x; });
+  f.prereq=[]; (nf._pre||[]).forEach(grp=>grp.forEach(k=>{ if(keymap[k] && f.prereq.indexOf(keymap[k].id)<0) f.prereq.push(keymap[k].id); }));
+  P.focuses.forEach(x=>{ if(x.mutex) x.mutex=x.mutex.filter(m=>m!==f.id); });
+  f.mutex=[]; (nf._mx||[]).forEach(k=>{ if(keymap[k]){ const t=keymap[k]; if(f.mutex.indexOf(t.id)<0) f.mutex.push(t.id); if(t.mutex.indexOf(f.id)<0) t.mutex.push(f.id); } });
+  f.relTo = (nf._rel && keymap[nf._rel]) ? keymap[nf._rel].id : "";
+  return true;
+}
+let scriptSyncTimer=null;
+function renderScript(f){
+  const host=$("#tabScript"); host.innerHTML="";
+  host.style.display="flex"; host.style.flexDirection="column"; host.style.minHeight="0"; host.style.overflow="hidden";
+  const info=document.createElement("div"); info.className="hint"; info.style.padding="8px 12px 6px";
+  info.innerHTML="The whole focus as script — edit anything and it syncs to the tool. Name &amp; description are the <span class='mono'>### name:</span> / <span class='mono'>### desc:</span> lines at the top.";
+  host.appendChild(info);
+  const bar=document.createElement("div"); bar.style.cssText="padding:0 12px 4px";
+  const pop=document.createElement("button"); pop.className="btn sm"; pop.textContent="⤢ Pop out"; pop.title="Open this script in a movable, resizable window";
+  pop.onclick=()=>bigEditScript(f);
+  bar.appendChild(pop); host.appendChild(bar);
+  const holder=document.createElement("div"); holder.style.cssText="flex:1 1 auto; min-height:0; padding:0 12px 12px; display:flex";
+  const ed=makeCodeEditor({ initial:focusToScript(f), mode:"fx", pickerBtn:true, lint:t=>lintScript(t, f),
+    onPicker:(a,ta)=>openScriptPicker(a, ta, "fx", {}, "_"),
+    onChange:t=>{
+      clearTimeout(scriptSyncTimer);
+      scriptSyncTimer=setTimeout(()=>{
+        const hasErr=lintScript(t, f).some(m=>m.level==="error");
+        if(hasErr && P.settings.scriptParse!=="live") return;   // keep last valid
+        if(scriptToFocus(t, f)) render();                        // canvas updates; editor stays
+      }, 250);
+    } });
+  holder.appendChild(ed.el); host.appendChild(holder);
+  ed.ta.focus();
 }
 
 /* ---- flags (hidden branches) ---- */
@@ -2239,7 +2509,7 @@ function openFlags(){
   $("#flAdd").onclick=()=>{ P.flags.push({key:"", scope:"country", note:""}); persist(); renderFlags(); };
   renderFlags();
 }
-function closeFlags(){ const v=$("#flagVeil"); if(v) v.remove(); if(previewOn) renderPreviewBar(); render(); if(sel.size) renderPanel(); }
+function closeFlags(){ const v=$("#flagVeil"); if(v) v.remove(); if(previewBarOpen) renderPreviewBar(); render(); if(sel.size) renderPanel(); }
 function renderFlags(){
   const b=$("#flBody"); if(!b) return;
   if(!P.flags.length){ b.innerHTML='<div class="mini">No flags yet. A flag is a named on/off switch (has_country_flag / has_global_flag) that shows or hides a focus branch.</div>'; return; }
@@ -2273,28 +2543,30 @@ function openSetFlagPicker(anchor, textarea, f){
   el.querySelectorAll("[data-fl]").forEach(it=>it.onclick=()=>{ const p=it.dataset.fl.split(":"); insertAtCursor(textarea,"set_"+p[0]+"_flag = "+p[1]); f.reward=textarea.value; closePicker(); });
 }
 
-/* ---- branch preview ---- */
-let previewOn=false, previewFlags=new Set();
+/* ---- branch preview ----
+   hiddenFlags is the set of flags currently switched OFF. A branch gated by
+   such a flag stays greyed on the canvas even after the preview bar closes,
+   until you switch its flag back on. */
+let previewBarOpen=false, hiddenFlags=new Set();
 function togglePreview(){
-  previewOn=!previewOn;
-  $("#bPreview").classList.toggle("active", previewOn);
-  if(previewOn){ renderPreviewBar(); $("#previewBar").classList.add("on"); }
+  previewBarOpen=!previewBarOpen;
+  $("#bPreview").classList.toggle("active", previewBarOpen);
+  if(previewBarOpen){ renderPreviewBar(); $("#previewBar").classList.add("on"); }
   else $("#previewBar").classList.remove("on");
   applyPreview();
 }
 function renderPreviewBar(){
   const bar=$("#previewBar"), flags=P.flags.filter(fl=>fl.key);
   bar.innerHTML='<h5>Preview branches</h5>'+
-    (flags.length? flags.map(fl=>'<label><input type="checkbox" data-pf="'+esc(fl.key)+'"'+(previewFlags.has(fl.key)?" checked":"")+'> '+esc(fl.key)+'</label>').join("")
+    (flags.length? flags.map(fl=>'<label><input type="checkbox" data-pf="'+esc(fl.key)+'"'+(hiddenFlags.has(fl.key)?"":" checked")+'> '+esc(fl.key)+'</label>').join("")
       : '<div class="mini">No flags. Add some with ⚑ Flags.</div>')+
-    '<div class="mini" style="margin-top:6px">Unchecked = its branch is hidden.</div>';
-  bar.querySelectorAll("[data-pf]").forEach(cb=>cb.onchange=()=>{ if(cb.checked) previewFlags.add(cb.dataset.pf); else previewFlags.delete(cb.dataset.pf); applyPreview(); });
+    '<div class="mini" style="margin-top:6px">Unchecked = its branch is hidden (stays hidden when you close this).</div>';
+  bar.querySelectorAll("[data-pf]").forEach(cb=>cb.onchange=()=>{ if(cb.checked) hiddenFlags.delete(cb.dataset.pf); else hiddenFlags.add(cb.dataset.pf); applyPreview(); });
 }
 function applyPreview(){
   document.querySelectorAll(".node").forEach(n=>{
-    let hidden=false;
-    if(previewOn){ const f=byId(n.dataset.id); const bf=f&&branchFlagOf(f); if(bf && !previewFlags.has(bf.key)) hidden=true; }
-    n.classList.toggle("hidden-preview", hidden);
+    const f=byId(n.dataset.id); const bf=f&&branchFlagOf(f);
+    n.classList.toggle("hidden-preview", !!(bf && hiddenFlags.has(bf.key)));
   });
 }
 
