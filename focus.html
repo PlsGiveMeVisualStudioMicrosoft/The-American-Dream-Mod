@@ -2648,10 +2648,32 @@ function renderPreviewBar(){
     '<div class="mini" style="margin-top:6px">Unchecked = its branch is hidden (stays hidden when you close this).</div>';
   bar.querySelectorAll("[data-pf]").forEach(cb=>cb.onchange=()=>{ if(cb.checked) hiddenFlags.delete(cb.dataset.pf); else hiddenFlags.add(cb.dataset.pf); applyPreview(); });
 }
+// The set of focuses hidden by the currently-off flags: every focus directly
+// gated by an off flag PLUS everything downstream of it. allow_branch hides the
+// whole branch in-game, so the preview greys the whole branch too. Downstream is
+// walked along prerequisite edges, honouring each focus's all/any mode: an "all"
+// focus is blocked if ANY prerequisite is hidden, an "any" focus only if they all are.
+function previewHiddenSet(){
+  const hidden=new Set();
+  P.focuses.forEach(f=>{ const g=branchGate(f); if(g && hiddenFlags.has(g.key)) hidden.add(f.id); });
+  if(!hidden.size) return hidden;
+  let changed=true;
+  while(changed){
+    changed=false;
+    P.focuses.forEach(f=>{
+      if(hidden.has(f.id)) return;
+      const pr=(f.prereq||[]).filter(id=>byId(id));
+      if(!pr.length) return;
+      const blocked = f.prereqMode==="any" ? pr.every(id=>hidden.has(id)) : pr.some(id=>hidden.has(id));
+      if(blocked){ hidden.add(f.id); changed=true; }
+    });
+  }
+  return hidden;
+}
 function applyPreview(){
+  const hidden = hiddenFlags.size ? previewHiddenSet() : null;
   document.querySelectorAll(".node").forEach(n=>{
-    const f=byId(n.dataset.id); const bf=f&&branchGate(f);
-    n.classList.toggle("hidden-preview", !!(bf && hiddenFlags.has(bf.key)));
+    n.classList.toggle("hidden-preview", !!(hidden && hidden.has(n.dataset.id)));
   });
 }
 
