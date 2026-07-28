@@ -316,6 +316,7 @@ a{color:var(--accent2)}
     <button class="btn" id="bPre" title="Draw a prerequisite: click the parent, then the child">↳ Prerequisite</button>
     <button class="btn" id="bMx" title="Draw a mutually-exclusive link: click one focus, then the other">⇄ Exclusive</button>
     <button class="btn" id="bIdeas">◆ Spirits</button>
+    <button class="btn" id="bEvents" title="Events fired by focuses (shared with the Event Maker)">✉ Events</button>
     <button class="btn" id="bFlags" title="Flags for hidden branches">⚑ Flags</button>
     <button class="btn" id="bPreview" title="Preview which branches show per flag">👁 Preview</button>
     <button class="btn ghost" id="bImport" title="Import an existing focus tree (.txt) + localisation">Import tree</button>
@@ -323,6 +324,7 @@ a{color:var(--accent2)}
     <button class="btn ghost" id="bOpen" title="Open project file">Open</button>
     <button class="btn ghost" id="bSettings" title="Settings">⚙</button>
     <button class="btn ghost" id="bHelp">?</button>
+    <button class="btn ghost" id="bCheck" title="Check the tree for problems (duplicate ids, missing icons/localisation, broken links, overlaps)">✓ Check</button>
     <button class="btn primary" id="bExport">Export ZIP</button>
   </div>
 
@@ -673,9 +675,10 @@ const SEARCH_FILTERS=[
 const SAVE_KEY="hoi4_focus_creator_v1";   // shared with the Story planner
 const SAVE_KEY_OLD="ftc_project_v1";
 function defMeta(){ return { mod:"", tag:"USA", start:"2025.1.1", dpc:7, treeId:"" }; }
+const LANGS=["english","braz_por","french","german","polish","russian","spanish","japanese","simp_chinese"];
 function defSettings(){ return { panelSide:"right", wheel:"zoom", webIcons:true, showGrid:true, showDates:true, theme:"light", aprchaos:false,
   newFocus:"double", dragSelect:false, bulkCost:true, bulkMutex:true, bulkApr:false, bulkIcon:false,
-  advLabel:"auto", tallNodes:false, panelW:380, searchBar:true, scriptParse:"valid" }; }
+  advLabel:"auto", tallNodes:false, panelW:380, searchBar:true, scriptParse:"valid", lang:"english" }; }
 let P = { meta:defMeta(), focuses:[], ideas:[], icons:{}, flags:[], settings:defSettings() };
 let selId=null, sel=new Set(), view={z:1,x:0,y:0};
 
@@ -688,6 +691,7 @@ function newFocus(x,y){
     searchFilters:[], willWarWith:"", offX:0, offY:0,
     flags:{ availCap:false, cancelInvalid:false, contInvalid:false, dynamic:false }, allowBranch:"",
     plan:false, vars:{ aprOn:false, apr:5, chaosOn:false, chaos:5 },
+    fireEvent:null,                 // { evId, days } — event fired on completion
     // round-trip preservation for imports
     extra:"", iconBlock:"", prereqRaw:null, external:false
   };
@@ -1053,9 +1057,11 @@ function renderBasic(f){
       '<div class="fx-tools">'+
         '<button class="btn sm" id="fxAdd">＋ Effect…</button>'+
         '<button class="btn sm" id="fxSpirit">◆ Grant spirit…</button>'+
+        '<button class="btn sm" id="fxEvent" title="Insert an event call at the cursor">✉ Fire event…</button>'+
         '<button class="btn sm" id="fxFlag" title="Set a flag to reveal a hidden branch">⚑ Set flag…</button>'+
         '<button class="btn sm" id="fxBig" title="Large editor">⤢</button></div>'+
       '<textarea class="inp" id="fReward" placeholder="add_political_power = 100">'+esc(f.reward)+'</textarea></div>'+
+    eventFireHTML(f)+
     aprChaosHTML(f)+
     '<div class="fld"><label class="checkline"><input type="checkbox" id="fPlan"'+(f.plan?" checked":"")+'> Show on the story-planner timeline</label>'+
       '<div class="hint">Flag the focuses you plan to take — only these appear on the planner, at their chained date'+(P.settings.aprchaos?" with their approval / chaos.":".")+'</div></div>';
@@ -1071,7 +1077,10 @@ function renderBasic(f){
   $("#pmAny").onclick=()=>{ f.prereqMode="any"; renderBasic(f); render(); };
   $("#fxAdd").onclick=e=>openScriptPicker(e.currentTarget, $("#fReward"), "fx", f, "reward");
   $("#fxSpirit").onclick=e=>openSpiritPicker(e.currentTarget, $("#fReward"), f);
+  $("#fxEvent").onclick=e=>openEventPicker(e.currentTarget, $("#fReward"), f);
   $("#fxFlag").onclick=e=>openSetFlagPicker(e.currentTarget, $("#fReward"), f);
+  { const es=$("#fEv"); if(es) es.onchange=()=>{ const v=es.value; if(!v) f.fireEvent=null; else { f.fireEvent=f.fireEvent||{days:0}; f.fireEvent.evId=v; if(f.fireEvent.days==null) f.fireEvent.days=0; } persist(); }; }
+  { const ed=$("#fEvDays"); if(ed) ed.oninput=()=>{ if(f.fireEvent){ f.fireEvent.days=clampInt(ed.value,0,3650,0); persist(); } }; }
   $("#fxBig").onclick=()=>bigEdit(f,"reward","Completion reward","fx");
   { const pv=$("#fIconPrev"); if(pv) pv.ondblclick=()=>openIconPicker(name=>setFocusIcon(f,name)); }
   bindText("#fReward", v=>{ f.reward=v; });
@@ -1085,6 +1094,19 @@ function renderBasic(f){
   }
   el.querySelectorAll("[data-unlink]").forEach(b=> b.onclick=()=>{ unlinkPrereq(f, b.dataset.unlink); });
   el.querySelectorAll("[data-unmx]").forEach(b=> b.onclick=()=>{ unlinkMutex(f, b.dataset.unmx); });
+}
+function eventFireHTML(f){
+  if(!EV) evLoad();
+  evAssignNumbers();
+  const evs=EV.events||[];
+  const cur=f.fireEvent&&f.fireEvent.evId;
+  const opts='<option value="">— none —</option>'+evs.map(e=>'<option value="'+esc(e.id)+'"'+(cur===e.id?" selected":"")+'>'+esc(evTitle(e)||evKeyOf(e))+'</option>').join("");
+  const days=(f.fireEvent&&f.fireEvent.days)||0;
+  const stale=cur && !evs.some(e=>e.id===cur);
+  return '<div class="fld"><label>Fires event on completion</label>'+
+    '<div class="inline"><select class="inp" id="fEv" style="flex:2 1 0">'+opts+(stale?'<option value="'+esc(cur)+'" selected>⚠ missing event</option>':'')+'</select>'+
+      '<span class="mini">after</span><input class="inp mono" id="fEvDays" style="width:52px; flex:0 0 auto" value="'+esc(days)+'"><span class="mini">days</span></div>'+
+    '<div class="hint">Adds <span class="mono">country_event = { id = … }</span> to the reward at export. Manage events with <b>✉ Events</b> in the toolbar.</div></div>';
 }
 function aprChaosHTML(f){
   if(!P.settings.aprchaos) return "";
@@ -1528,6 +1550,7 @@ function openIconPicker(cb){
       '<span class="libcount" id="icCount"></span></div>'+
     '<div class="modal-b">'+
       '<div class="iconsearch"><input id="icSearch" placeholder="Search '+ICONS.length+' vanilla icons…" spellcheck="false">'+
+        '<button class="btn" id="icProto" title="Add a placeholder sprite with a name you choose — drop the real .dds in later">＋ Prototype</button>'+
         '<button class="btn" id="icImport">Import image…</button></div>'+
       '<div class="icongrid" id="icGrid"></div>'+
     '</div>'+
@@ -1539,6 +1562,13 @@ function openIconPicker(cb){
   $("#icCancel").onclick=closeIcon;
   $("#icOk").onclick=()=>{ if(iconSel){ iconCb(iconSel); } closeIcon(); };
   $("#icImport").onclick=()=>{ picImageMode="library"; $("#fileImg").click(); };
+  $("#icProto").onclick=()=>{
+    const raw=prompt("Sprite name for the placeholder (a GFX_ prefix is added if you omit it).\nExport ships a temporary .dds under this name — replace it in the mod folder later.", "GFX_focus_"+tag()+"_prototype");
+    if(raw===null) return;
+    const nm=addPrototypeIcon(raw);
+    if(!nm){ toast("Enter a name for the prototype."); return; }
+    persist(); iconSel=nm; $("#icSearch").value=""; fillIconGrid(""); toast("Prototype "+nm+" added");
+  };
   const si=$("#icSearch"); si.oninput=()=>fillIconGrid(si.value); si.focus();
   $("#icGrid").onscroll=()=>{ if(!icScrollRAF) icScrollRAF=requestAnimationFrame(()=>{ icScrollRAF=0; layoutIconWindow(); }); };
   fillIconGrid("");
@@ -1584,6 +1614,24 @@ function layoutIconWindow(){
   });
 }
 
+/* prototype sprite: a named placeholder icon so the export is structurally
+   complete (gfx entry + a temporary .dds) and you swap the real art in later */
+function addPrototypeIcon(raw){
+  let nm=String(raw||"").trim().replace(/[^A-Za-z0-9_]/g,"_").replace(/_+/g,"_").replace(/^_+|_+$/g,"");
+  if(!nm) return null;
+  nm = /^GFX_/i.test(nm) ? "GFX_"+nm.slice(4) : "GFX_"+nm;   // normalise the prefix
+  const S=95, cv=document.createElement("canvas"); cv.width=S; cv.height=S; const cx=cv.getContext("2d");
+  cx.fillStyle="#2b2f36"; cx.fillRect(0,0,S,S);
+  cx.strokeStyle="#e0b000"; cx.lineWidth=6;                  // hazard stripes so it's obvious it's a placeholder
+  for(let i=-S;i<S;i+=18){ cx.beginPath(); cx.moveTo(i,0); cx.lineTo(i+S,S); cx.stroke(); }
+  cx.fillStyle="rgba(18,20,24,.74)"; cx.fillRect(3,30,S-6,36);
+  cx.textAlign="center"; cx.fillStyle="#ffd34d"; cx.font="bold 14px sans-serif"; cx.fillText("PROTO", S/2, 46);
+  const short=nm.replace(/^GFX_/,""); cx.fillStyle="#fff"; cx.font="9px sans-serif";
+  cx.fillText(short.length>17?short.slice(0,16)+"…":short, S/2, 59);
+  const file=(short.toLowerCase().replace(/[^a-z0-9_]/g,"_")||"prototype");
+  P.icons[nm]={ url:cv.toDataURL("image/png"), w:S, h:S, file:file, proto:true };
+  return nm;
+}
 /* image import: resize to 95x95, store as data URL under a GFX name */
 let picImageMode="library"; // 'library' -> picker flow
 $("#fileImg").onchange=ev=>{
@@ -1734,6 +1782,184 @@ function openModPicker(anchor, idea){
 }
 
 /* =====================================================================
+   10c. Events — shared with the standalone Event Maker (events.html)
+   Read/write the SAME browser storage, in the same shape, so an event can
+   be created here and fully edited there (and vice-versa). Events made here
+   are triggered-only and fired when a focus completes.
+   ===================================================================== */
+const EV_KEY="hoi4_event_maker_v1", EV_SET_KEY="hoi4_event_maker_settings_v1";
+const EV_DEF_SET={ driverMode:"file", countryW:210,countryH:176, newsW:397,newsH:153, countryBase:1,newsBase:100, defaultTag:"USA", startDate:"2025.1.1" };
+const EV_TIMING_DEF={ mode:"approximate", tag:"USA", date:"2025.1.20", hours:23, trigger:"", conds:"", mtthMonths:0, mtthDays:1 };
+let EV=null;
+function evNewOption(){ return { id:uid(), name:"", trigger:"", effects:"", ttKey:"", ttText:"", mods:null, vars:{aprOn:false,apr:5,chaosOn:false,chaos:5} }; }
+function evNewEvent(){ const t=tag(); return { id:uid(), type:"country", num:null, text:"", ttText:"", pic:null, major:true, fireOnce:true, hidden:false, immediate:"", timing:Object.assign({},EV_TIMING_DEF,{mode:"triggered", tag:t, trigger:"original_tag = "+t}), options:[evNewOption()] }; }
+function evLoad(){
+  const raw=store.get(EV_KEY);
+  if(raw){ try{ const p=JSON.parse(raw); if(p && Array.isArray(p.events)){
+    p.settings=Object.assign({},EV_DEF_SET,p.settings||{});
+    p.events.forEach(e=>{ e.timing=Object.assign({},EV_TIMING_DEF,e.timing||{}); e.options=(e.options||[]).map(o=>Object.assign(evNewOption(),o)); });
+    EV=p; return EV; } }catch(e){} }
+  EV={ ns:(tag().toLowerCase()+"_focus_events"), settings:Object.assign({},EV_DEF_SET,{defaultTag:tag()}), events:[] };
+  return EV;
+}
+function evPersist(){ if(!EV) return; try{ store.set(EV_KEY, JSON.stringify(EV)); store.set(EV_SET_KEY, JSON.stringify(EV.settings)); }catch(e){} }
+function evNsClean(){ return ((EV&&EV.ns)||"my_events").trim().replace(/[^A-Za-z0-9_]/g,"_").toLowerCase() || "my_events"; }
+function evAssignNumbers(){
+  if(!EV) evLoad();
+  let c=EV.settings.countryBase||1, n=EV.settings.newsBase||100; const used=new Set();
+  EV.events.forEach(e=>{ if(e.num!=null) used.add(e.num); });
+  EV.events.forEach(e=>{ if(e.num!=null){ e._num=e.num; return; } if(e.type==="news"){ while(used.has(n)) n++; e._num=n; used.add(n); n++; } else { while(used.has(c)) c++; e._num=c; used.add(c); c++; } });
+}
+function evKeyOf(e){ return evNsClean()+"."+e._num; }
+function evSplit(t){ const s=String(t==null?"":t); const i=s.indexOf("\n"); if(i===-1) return {title:s.trim(),desc:""}; return {title:s.slice(0,i).trim(), desc:s.slice(i+1).replace(/^\n+/,"")}; }
+function evTitle(e){ return evSplit(e.text).title; }
+function evOptSuffix(i){ const L="abcdefghijklmnopqrstuvwxyz"; return i<26?L[i]:"opt"+(i+1); }
+function evGfxName(e){ if(e.pic && e.pic.ref) return e.pic.name; const base=(e.pic&&e.pic.name)?e.pic.name:evKeyOf(e).replace(/\./g,"_"); return (e.type==="news"?"GFX_news_event_":"GFX_report_event_")+base; }
+function locEsc(s){ return String(s==null?"":s).replace(/"/g,'\\"').replace(/\n/g,"\\n"); }
+
+function buildEventsFileFTC(){
+  evAssignNumbers();
+  let out="add_namespace = "+evNsClean()+"\n";
+  EV.events.forEach(e=>{
+    const key=evKeyOf(e), kind=(e.type==="news"?"news_event":"country_event");
+    out+="\n"+kind+" = {\n\tid = "+key+"\n";
+    if(!e.hidden){ out+="\ttitle = "+key+".t\n\tdesc = "+key+".d\n"; if(e.pic) out+="\tpicture = "+evGfxName(e)+"\n"; }
+    else out+="\thidden = yes\n";
+    out+="\n";
+    if(e.timing.mode==="approximate"){
+      const trig=String(e.timing.trigger||"").trim(); if(trig) out+="\ttrigger = {\n"+ind(trig,2)+"\n\t}\n\n";
+      const m=e.timing.mtthMonths||0, d=e.timing.mtthDays||0;
+      if(m||d){ out+="\tmean_time_to_happen = {\n"+(m?"\t\tmonths = "+m+"\n":"")+(d?"\t\tdays = "+d+"\n":"")+"\t}\n\n"; }
+    } else {
+      out+="\tis_triggered_only = yes\n";
+      if(e.timing.mode==="precise" && String(e.timing.conds||"").trim()) out+="\n\ttrigger = {\n"+ind(e.timing.conds,2)+"\n\t}\n";
+    }
+    if(e.type==="news"&&e.major) out+="\tmajor = yes\n";
+    if(e.fireOnce && !(e.type==="news"&&e.major)) out+="\tfire_only_once = yes\n";
+    out+="\n";
+    if(String(e.immediate||"").trim()) out+="\timmediate = {\n"+ind(e.immediate,2)+"\n\t}\n\n";
+    if(!e.options.length && !e.hidden) out+="\t# WARNING: no options — the player cannot dismiss this event.\n";
+    e.options.forEach((o,i)=>{
+      const ok=key+"."+evOptSuffix(i);
+      out+="\toption = {\n\t\tname = "+ok+"\n";
+      if(String(o.trigger||"").trim()) out+="\n\t\ttrigger = {\n"+ind(o.trigger,3)+"\n\t\t}\n";
+      const bits=[];
+      if(String(o.ttText||"").trim()) bits.push("custom_effect_tooltip = "+ok+"_tt");
+      if(String(o.effects||"").trim()) bits.push(String(o.effects).trim());
+      if(bits.length) out+="\n"+ind(bits.join("\n"),2)+"\n";
+      out+="\t}\n";
+      if(i<e.options.length-1) out+="\n";
+    });
+    out+="}\n";
+  });
+  return out;
+}
+function buildEventLocFTC(lang){
+  lang=lang||"english"; evAssignNumbers();
+  let out="﻿l_"+lang+":\n";
+  EV.events.forEach(e=>{
+    const sp=evSplit(e.text), key=evKeyOf(e);
+    let desc=sp.desc; if(String(e.ttText||"").trim()) desc=(desc?desc+"\n\n":"")+"["+key+".tt]";
+    out+="\n";
+    if(!e.hidden){ out+=" "+key+'.t:0 "'+locEsc(sp.title)+'"\n'; out+=" "+key+'.d:0 "'+locEsc(desc)+'"\n'; if(String(e.ttText||"").trim()) out+=" "+key+'.tt:0 "'+locEsc(e.ttText)+'"\n'; }
+    e.options.forEach((o,i)=>{ const ok=key+"."+evOptSuffix(i); out+=" "+ok+':0 "'+locEsc(o.name)+'"\n'; if(String(o.ttText||"").trim()) out+=" "+ok+'_tt:0 "'+locEsc(o.ttText)+'"\n'; });
+  });
+  return out;
+}
+function buildEventGfxFTC(){
+  const withPics=EV.events.filter(e=>e.pic && e.pic.url && !e.pic.ref); if(!withPics.length) return "";
+  let out="spriteTypes = {\n"; const seen={};
+  withPics.forEach(e=>{ const n=evGfxName(e); if(seen[n]) return; seen[n]=1; out+="\n\tspriteType = {\n\t\tname = \""+n+"\"\n\t\ttexturefile = \"gfx/event_pictures/"+e.pic.name+".dds\"\n\t}\n"; });
+  out+="}\n"; return out;
+}
+
+function openEvents(){
+  evLoad();
+  const veil=document.createElement("div"); veil.className="veil"; veil.id="evVeil";
+  veil.innerHTML=
+    '<div class="modal" style="width:700px"><div class="modal-h"><h3>Events</h3><span class="mini" style="margin-left:8px">shared with the Event Maker</span><div class="spacer"></div>'+
+      '<button class="btn sm" id="evAdd">＋ New event</button></div>'+
+    '<div class="modal-b" id="evBody"></div>'+
+    '<div class="modal-f"><span class="mini" style="margin-right:auto">Namespace <input class="inp mono" id="evNs" style="width:150px; display:inline-block; padding:4px 6px" value="'+esc((EV&&EV.ns)||"")+'"> · fire one from a focus’s <b>Fires event</b> field or <b>✉ Fire event</b>.</span>'+
+      '<button class="btn primary" id="evDone">Done</button></div></div>';
+  document.body.appendChild(veil);
+  veil.onclick=e=>{ if(e.target===veil) closeEvents(); };
+  $("#evDone").onclick=closeEvents;
+  $("#evNs").oninput=e=>{ EV.ns=e.target.value; evPersist(); };
+  $("#evAdd").onclick=()=>{ EV.events.push(evNewEvent()); evPersist(); renderEvents(); };
+  renderEvents();
+}
+function closeEvents(){ const v=$("#evVeil"); if(v) v.remove(); if(selId) renderPanel(); render(); }
+function renderEvents(){
+  const b=$("#evBody"); if(!b) return;
+  evAssignNumbers();
+  if(!EV.events.length){ b.innerHTML='<div class="mini">No events yet. An event here is triggered-only (<span class="mono">is_triggered_only = yes</span>) and fires when a focus completes. Full timing and imported pictures live in the Event Maker; anything made there appears here too.</div>'; return; }
+  b.innerHTML=EV.events.map((e,idx)=>{
+    const sp=evSplit(e.text);
+    const opts=e.options.map((o,oi)=>'<div class="mod-row" style="align-items:flex-start; gap:6px">'+
+        '<div style="flex:1 1 auto; min-width:0">'+
+          '<input class="inp" data-eoname="'+idx+'_'+oi+'" value="'+esc(o.name)+'" placeholder="Option '+evOptSuffix(oi)+' text (e.g. Understood)" spellcheck="false">'+
+          '<div class="fx-tools" style="margin-top:4px"><button class="btn sm" data-eoeff="'+idx+'_'+oi+'">＋ Effect…</button></div>'+
+          '<textarea class="inp" data-eofx="'+idx+'_'+oi+'" style="min-height:38px" placeholder="Effects when chosen (optional)">'+esc(o.effects)+'</textarea>'+
+        '</div>'+
+        '<button class="btn sm danger" data-eodel="'+idx+'_'+oi+'" title="Remove option">×</button></div>').join("");
+    return '<div class="idea-card">'+
+      '<div class="ihead"><input class="inp" style="flex:3" data-etitle="'+idx+'" value="'+esc(sp.title)+'" placeholder="Event title" spellcheck="false">'+
+        '<span class="seg"><button data-etype="'+idx+'" data-v="country" class="'+(e.type!=="news"?"on":"")+'">country</button><button data-etype="'+idx+'" data-v="news" class="'+(e.type==="news"?"on":"")+'">news</button></span>'+
+        '<span class="mono mini" title="event id">'+esc(evKeyOf(e))+'</span>'+
+        '<button class="btn sm danger" data-edel="'+idx+'">Delete</button></div>'+
+      '<textarea class="inp" data-edesc="'+idx+'" style="white-space:normal; font-family:var(--font-ui); min-height:44px" placeholder="Description (shown in the event box)">'+esc(sp.desc)+'</textarea>'+
+      '<div class="inline" style="margin-top:6px; gap:12px; flex-wrap:wrap">'+
+        '<label class="mini"><input type="checkbox" data-ehidden="'+idx+'"'+(e.hidden?" checked":"")+'> hidden (no popup)</label>'+
+        '<label class="mini"><input type="checkbox" data-eonce="'+idx+'"'+(e.fireOnce?" checked":"")+'> fire only once</label>'+
+        '<span class="mini">picture <input class="inp mono" data-epic="'+idx+'" style="width:180px; display:inline-block; padding:4px 6px" value="'+esc(e.pic&&e.pic.name?e.pic.name:"")+'" placeholder="GFX_… sprite (optional)"></span>'+
+      '</div>'+
+      '<div style="margin-top:8px"><label class="mini">Options</label>'+(opts||'<div class="mini">No options.</div>')+
+        '<button class="btn sm" data-eoadd="'+idx+'" style="margin-top:6px">＋ Option</button></div>'+
+    '</div>';
+  }).join("");
+  const setText=idx=>{ const t=b.querySelector('[data-etitle="'+idx+'"]').value, d=b.querySelector('[data-edesc="'+idx+'"]').value; EV.events[idx].text=(d?t+"\n"+d:t); evPersist(); };
+  b.querySelectorAll("[data-etitle]").forEach(el=>el.oninput=()=>setText(+el.dataset.etitle));
+  b.querySelectorAll("[data-edesc]").forEach(el=>el.oninput=()=>setText(+el.dataset.edesc));
+  b.querySelectorAll("[data-etype]").forEach(bt=>bt.onclick=()=>{ EV.events[+bt.dataset.etype].type=bt.dataset.v; evPersist(); renderEvents(); });
+  b.querySelectorAll("[data-edel]").forEach(el=>el.onclick=()=>{ EV.events.splice(+el.dataset.edel,1); evPersist(); renderEvents(); });
+  b.querySelectorAll("[data-ehidden]").forEach(el=>el.onchange=()=>{ EV.events[+el.dataset.ehidden].hidden=el.checked; evPersist(); renderEvents(); });
+  b.querySelectorAll("[data-eonce]").forEach(el=>el.onchange=()=>{ EV.events[+el.dataset.eonce].fireOnce=el.checked; evPersist(); });
+  b.querySelectorAll("[data-epic]").forEach(el=>el.oninput=()=>{ const v=el.value.trim(); EV.events[+el.dataset.epic].pic = v?{name:v, ref:true}:null; evPersist(); });
+  b.querySelectorAll("[data-eoadd]").forEach(el=>el.onclick=()=>{ EV.events[+el.dataset.eoadd].options.push(evNewOption()); evPersist(); renderEvents(); });
+  b.querySelectorAll("[data-eodel]").forEach(el=>el.onclick=()=>{ const[a,c]=el.dataset.eodel.split("_").map(Number); EV.events[a].options.splice(c,1); evPersist(); renderEvents(); });
+  b.querySelectorAll("[data-eoname]").forEach(el=>el.oninput=()=>{ const[a,c]=el.dataset.eoname.split("_").map(Number); EV.events[a].options[c].name=el.value; evPersist(); });
+  b.querySelectorAll("[data-eofx]").forEach(el=>el.oninput=()=>{ const[a,c]=el.dataset.eofx.split("_").map(Number); EV.events[a].options[c].effects=el.value; evPersist(); });
+  b.querySelectorAll("[data-eoeff]").forEach(el=>el.onclick=ev=>{ const[a,c]=el.dataset.eoeff.split("_").map(Number); const ta=b.querySelector('[data-eofx="'+a+'_'+c+'"]'); openEffectPickerInto(ev.currentTarget, ta, ()=>{ EV.events[a].options[c].effects=ta.value; evPersist(); }); });
+}
+// effect picker that inserts into any textarea and calls back (for event options)
+function openEffectPickerInto(anchor, textarea, after){
+  closePicker();
+  const el=document.createElement("div"); el.className="pick"; pickerEl=el;
+  el.innerHTML='<div class="pick-top"><input placeholder="Search effects…" id="pkQ"></div><div class="pick-list" id="pkList"></div>';
+  document.body.appendChild(el);
+  const r=anchor.getBoundingClientRect(); el.style.left=Math.min(r.left,window.innerWidth-360)+"px"; el.style.top=(r.bottom+4)+"px";
+  const q=el.querySelector("#pkQ"), list=el.querySelector("#pkList");
+  function fill(){ const term=q.value.trim().toLowerCase(); let html="";
+    EFFECTS.forEach(([grp,items])=>{ const hits=items.filter(it=>!term||it[0].toLowerCase().indexOf(term)>=0||(it[2]||"").toLowerCase().indexOf(term)>=0||it[1].toLowerCase().indexOf(term)>=0); if(!hits.length)return;
+      html+='<div class="pick-grp">'+esc(grp)+'</div>'; hits.forEach(it=>html+='<div class="pick-item" data-snip="'+esc(it[1])+'"><div class="pn">'+esc(it[0])+'</div><div class="pd">'+esc(it[2]||"")+'</div></div>'); });
+    list.innerHTML=html||'<div class="pick-item"><div class="pd">No matches.</div></div>';
+    list.querySelectorAll("[data-snip]").forEach(item=>item.onclick=()=>{ insertAtCursor(textarea, item.dataset.snip); if(after) after(); closePicker(); }); }
+  q.oninput=fill; fill(); q.focus();
+}
+// pick an event to fire, inserting a country_event/news_event call at the cursor
+function openEventPicker(anchor, textarea, f){
+  closePicker(); evLoad(); evAssignNumbers();
+  const el=document.createElement("div"); el.className="pick"; pickerEl=el;
+  const items=EV.events.length? EV.events.map(e=>'<div class="pick-item" data-ev="'+esc(e.id)+'"><div class="pn">'+(e.type==="news"?"news_event":"country_event")+' = { id = '+esc(evKeyOf(e))+' }</div><div class="pd">'+esc(evTitle(e)||"(untitled)")+'</div></div>').join("")
+    : '<div class="pick-item"><div class="pd">No events yet. Make one with ✉ Events in the toolbar.</div></div>';
+  el.innerHTML='<div class="pick-top"><b style="font-size:12px">Fire an event</b></div><div class="pick-list">'+items+'</div>';
+  document.body.appendChild(el);
+  const r=anchor.getBoundingClientRect(); el.style.left=Math.min(r.left,window.innerWidth-360)+"px"; el.style.top=(r.bottom+4)+"px";
+  el.querySelectorAll("[data-ev]").forEach(it=>it.onclick=()=>{ const e=EV.events.find(x=>x.id===it.dataset.ev); if(e){ insertAtCursor(textarea,(e.type==="news"?"news_event":"country_event")+" = { id = "+evKeyOf(e)+" days = 0 }"); f.reward=textarea.value; } closePicker(); });
+}
+
+/* =====================================================================
    11. DDS encoder + ZIP writer  (from the Event Maker)
    ===================================================================== */
 function ddsFromDataURL(url,w,h){
@@ -1862,6 +2088,7 @@ function buildFocus(f){
   const extra=[];
   if(v.aprOn) extra.push("set_temp_variable = { apr_delta = "+(Number(v.apr)||0)+" }", "USA_apr_add = yes");
   if(v.chaosOn) extra.push("set_temp_variable = { chaos_delta = "+(Number(v.chaos)||0)+" }", "USA_chaos_add = yes");
+  if(f.fireEvent && f.fireEvent.evId){ if(!EV) evLoad(); evAssignNumbers(); const ev=EV.events.find(x=>x.id===f.fireEvent.evId); if(ev){ const d=Number(f.fireEvent.days)||0; extra.push((ev.type==="news"?"news_event":"country_event")+" = { id = "+evKeyOf(ev)+(d>0?" days = "+d:"")+" }"); } }
   if(extra.length) rew = (rew?rew+"\n":"")+extra.join("\n");
   if(rew) b+=block("completion_reward", rew, 2);
   else b+="\t\tcompletion_reward = { }\n";
@@ -1873,8 +2100,9 @@ function buildFocus(f){
 }
 
 function ymlLine(key,val){ return " "+key+':0 "'+String(val||"").replace(/"/g,'\\"').replace(/\n/g,"\\n")+'"\n'; }
-function buildLocFile(){
-  let s="\uFEFFl_english:\n";
+function buildLocFile(lang){
+  lang=lang||"english";
+  let s="\uFEFFl_"+lang+":\n";
   s+="  ### National focus: "+treeId()+"\n";
   P.focuses.forEach(f=>{
     const key=focusKey(f);
@@ -1947,75 +2175,136 @@ function buildIdeasFile(){
   s+="\t}\n}\n";
   return s;
 }
-function buildReadme(fileList){
+// folder name the mod lives under (mod/<root>/) — from the mod name, else the tree id
+function modRoot(){ const m=(P.meta.mod||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""); return m||treeId(); }
+function modName(){ return (P.meta.mod||(tag()+" focus tree")).replace(/"/g,"'"); }
+function buildDescriptor(){
+  return 'name="'+modName()+'"\n'+
+         'version="1.0"\n'+
+         'tags={\n\t"Focuses"\n\t"Gameplay"\n}\n'+
+         'supported_version="*"\n';
+}
+function buildModFile(root){   // the launcher's mod/<root>.mod, points at the folder
+  return 'name="'+modName()+'"\n'+
+         'path="mod/'+root+'"\n'+
+         'version="1.0"\n'+
+         'tags={\n\t"Focuses"\n\t"Gameplay"\n}\n'+
+         'supported_version="*"\n';
+}
+function buildReadme(fileList, root, lang){
   const T=tag(), ns=treeId();
   let r="Focus Tree Creator export — "+(P.meta.mod||"mod")+"\n";
-  r+="Country: "+T+"   Focuses: "+P.focuses.length+"   Spirits: "+P.ideas.length+"\n";
+  r+="Country: "+T+"   Focuses: "+P.focuses.filter(f=>!f.external).length+"   Spirits: "+P.ideas.length+"\n";
   r+="Generated: "+new Date().toISOString().slice(0,10)+"\n\n";
-  r+="Drop these folders into your mod (merging with what's there):\n\n";
+  r+="INSTALL\n";
+  r+="Unzip into  Documents/Paradox Interactive/Hearts of Iron IV/mod/  so you get:\n";
+  r+="  mod/"+root+".mod        <- the launcher reads this\n";
+  r+="  mod/"+root+"/           <- the mod itself (contains descriptor.mod)\n";
+  r+="then enable it from the HOI4 launcher's mod list.\n\n";
+  r+="FILES (inside "+root+"/):\n";
   fileList.forEach(f=>r+="  "+f+"\n");
   r+="\nNotes:\n";
-  r+="* The focus tree id is '"+ns+"'. It is set to country = "+T+" with add = 100.\n";
-  r+="* Imported icons are uncompressed 32-bit DDS (95x95). Each has a matching\n";
+  r+="* The focus tree id is '"+ns+"', set to country = "+T+" with add = 100.\n";
+  r+="* Imported icons are uncompressed 32-bit DDS (95x95), each with a matching\n";
   r+="  _shine sprite so the focus glows when available, exactly like vanilla.\n";
-  r+="* Library icons (GFX_goal_* / GFX_focus_*) reference sprites already in the\n";
-  r+="  base game, so no .dds is shipped for them.\n";
-  r+="* Localisation is English; copy the yml for other languages as needed.\n";
+  r+="* Library icons (GFX_goal_* / GFX_focus_*) reference base-game sprites, so no\n";
+  r+="  .dds is shipped for them.\n";
+  const protos=Object.keys(P.icons).filter(n=>P.icons[n].proto && usedIcon(n));
+  if(protos.length){ r+="* PROTOTYPE placeholders — replace these with real art:\n"; protos.forEach(n=>r+="    gfx/interface/goals/"+P.icons[n].file+".dds   ("+n+")\n"); }
+  r+="* Localisation language slot: l_"+(lang||"english")+".\n";
   return r;
 }
 
 /* =====================================================================
    13. Validation + export
    ===================================================================== */
+// returns [level, who, message, jumpId?] — level ∈ error | warn | info
 function validate(){
   const out=[];
-  const keys={};
+  const keys={}, cells={};
+  const allIds=new Set(P.focuses.map(f=>f.id));
   P.focuses.forEach(f=>{
+    if(f.external) return;                       // placeholders aren't exported
     const k=focusKey(f);
-    if(!f.name) out.push(["warn", k, "has no in-game name."]);
-    if(!/^[A-Za-z0-9_]+$/.test(k)) out.push(["error", k, "script id has characters the game will reject — use letters, numbers, underscore."]);
-    if(keys[k]) out.push(["error", k, "duplicate script id — two focuses share it."]); keys[k]=1;
+    if(!/^[A-Za-z0-9_]+$/.test(k)) out.push(["error", k, "script id has characters the game will reject — use letters, numbers, underscore.", f.id]);
+    if(keys[k]) out.push(["error", k, "duplicate script id — another focus already uses it.", f.id]);
+    keys[k]=1;
+    if(!f.name) out.push(["warn", k, "no in-game name — localisation falls back to the raw id.", f.id]);
+    if(!f.icon || f.icon==="GFX_goal_unknown") out.push(["warn", k, "no icon set — shows the 'unknown' placeholder in-game.", f.id]);
+    (f.prereq||[]).forEach(p=>{ if(!allIds.has(p)) out.push(["error", k, "a prerequisite points at a focus that no longer exists.", f.id]); });
+    (f.mutex||[]).forEach(m=>{ if(!allIds.has(m)) out.push(["error", k, "a mutually-exclusive link points at a focus that no longer exists.", f.id]); });
+    if(f.relTo && !allIds.has(f.relTo)) out.push(["warn", k, "positioned relative to a focus that no longer exists.", f.id]);
+    const cell=f.x+","+f.y; (cells[cell]=cells[cell]||[]).push(f);
   });
-  P.ideas.forEach(i=>{ const k=ideaKey(i); if(!/^[A-Za-z0-9_]+$/.test(k)) out.push(["error", k, "spirit id is invalid."]); });
-  if(!P.focuses.length) out.push(["error","tree","no focuses to export."]);
+  Object.keys(cells).forEach(c=>{ const a=cells[c]; if(a.length>1) out.push(["warn", a.map(focusKey).join(" + "), "these "+a.length+" focuses share cell ("+c+") — their icons overlap in-game.", a[0].id]); });
+  P.ideas.forEach(i=>{ const k=ideaKey(i); if(!/^[A-Za-z0-9_]+$/.test(k)) out.push(["error", k, "spirit id is invalid — use letters, numbers, underscore."]); });
+  Object.keys(P.icons).filter(n=>P.icons[n].proto && usedIcon(n)).forEach(n=>
+    out.push(["info", n, "prototype placeholder — replace gfx/interface/goals/"+P.icons[n].file+".dds after export."]));
+  if(!P.focuses.filter(f=>!f.external).length) out.push(["error","tree","no focuses to export."]);
   if(!parseDate(P.meta.start)) out.push(["warn","date","start date is not a valid Y.M.D — dates may look wrong."]);
-  return out;
+  // events (shared with the Event Maker)
+  if(!EV) evLoad(); evAssignNumbers();
+  const evIds=new Set(EV.events.map(e=>e.id));
+  P.focuses.forEach(f=>{ if(!f.external && f.fireEvent && f.fireEvent.evId && !evIds.has(f.fireEvent.evId)) out.push(["error", focusKey(f), "fires an event that no longer exists — pick one in ✉ Events or clear the field.", f.id]); });
+  EV.events.forEach(e=>{ if(!e.hidden && !evTitle(e)) out.push(["warn", evKeyOf(e), "event has no title."]); if(!e.hidden && !e.options.length) out.push(["warn", evKeyOf(e), "event has no options — the player can't dismiss it."]); });
+  // most severe first
+  const rank={error:0,warn:1,info:2};
+  return out.sort((a,b)=>rank[a[0]]-rank[b[0]]);
 }
+function checkTree(){ showIssues(validate(), true); }
 async function exportAll(skip){
-  if(!P.focuses.length){ toast("Add a focus first."); return; }
+  if(!P.focuses.filter(f=>!f.external).length){ toast("Add a focus first."); return; }
   const issues=validate();
   if(!skip && issues.some(i=>i[0]==="error")){ showIssues(issues); return; }
-  const T=tag(), ns=treeId();
-  const files=[];
-  const paths=[];
-  function add(path,data){ files.push({path,data:utf8(data)}); paths.push(path); }
+  const T=tag(), root=modRoot(), lang=(P.settings.lang||"english");
+  const files=[], paths=[];
+  // everything for the mod lives under <root>/ so the zip extracts as one tidy folder
+  function add(path,data){ files.push({path:root+"/"+path, data:(data instanceof Uint8Array?data:utf8(data))}); paths.push(path); }
+  add("descriptor.mod", buildDescriptor());
   add("common/national_focus/"+T+"_focus.txt", buildFocusFile());
-  add("localisation/english/"+T+"_focus_l_english.yml", buildLocFile());
+  add("localisation/"+lang+"/"+T+"_focus_l_"+lang+".yml", buildLocFile(lang));
   const gfx=buildGfxFile(); if(gfx){ add("interface/"+T+"_focus.gfx", gfx); }
   const shine=buildShineFile(); if(shine){ add("interface/"+T+"_focus_shine.gfx", shine); }
   const ideas=buildIdeasFile(); if(ideas){ add("common/ideas/"+T+"_focus_ideas.txt", ideas); }
-  // dds icons
+  // events fired by focuses (shared with the Event Maker)
+  evLoad(); evAssignNumbers();
+  if(EV.events.length){
+    const ens=evNsClean();
+    add("events/"+ens+".txt", buildEventsFileFTC());
+    add("localisation/"+lang+"/"+ens+"_l_"+lang+".yml", buildEventLocFTC(lang));
+    const eg=buildEventGfxFTC(); if(eg) add("interface/"+ens+"_events.gfx", eg);
+    for(const ev of EV.events){ if(ev.pic && ev.pic.url && !ev.pic.ref && ev.pic.name){
+      try{ const dds=await ddsFromDataURL(ev.pic.url, ev.pic.w||210, ev.pic.h||176); add("gfx/event_pictures/"+ev.pic.name+".dds", dds); }catch(_){}
+    } }
+  }
   for(const n of customIcons()){
     try{ const dds=await ddsFromDataURL(P.icons[n].url, P.icons[n].w, P.icons[n].h);
-      files.push({path:"gfx/interface/goals/"+P.icons[n].file+".dds", data:dds}); paths.push("gfx/interface/goals/"+P.icons[n].file+".dds"); }
+      add("gfx/interface/goals/"+P.icons[n].file+".dds", dds); }
     catch(e){}
   }
-  files.push({path:"README.txt", data:utf8(buildReadme(paths))});
-  download(ns+".zip", makeZip(files), "application/zip");
+  add("README.txt", buildReadme(paths.slice(), root, lang));
+  // the launcher descriptor sits next to the folder, not inside it
+  files.push({path:root+".mod", data:utf8(buildModFile(root))});
+  download(root+".zip", makeZip(files), "application/zip");
   toast("Exported "+files.length+" files");
 }
-function showIssues(issues){
-  const veil=document.createElement("div"); veil.className="veil";
-  const body=issues.map(i=>'<div class="issue '+i[0]+'"><span class="who">'+esc(i[1])+'</span> — '+esc(i[2])+'</div>').join("");
-  const nErr=issues.filter(i=>i[0]==="error").length;
-  veil.innerHTML='<div class="modal" style="width:520px"><div class="modal-h"><h3>Before exporting</h3></div>'+
+function showIssues(issues, fromCheck){
+  const veil=document.createElement("div"); veil.className="veil"; veil.id="issueVeil";
+  const nErr=issues.filter(i=>i[0]==="error").length, nWarn=issues.filter(i=>i[0]==="warn").length;
+  const body = issues.length
+    ? issues.map(i=>'<div class="issue '+i[0]+'"'+(i[3]?' data-jump="'+esc(i[3])+'" style="cursor:pointer"':'')+'><span class="who">'+esc(i[1])+'</span> — '+esc(i[2])+(i[3]?' <span class="mini">· jump →</span>':'')+'</div>').join("")
+    : '<div class="issue info"><b>All clear.</b> No problems found — ready to export.</div>';
+  const count=(nErr?nErr+" error"+(nErr>1?"s":""):"")+(nErr&&nWarn?" · ":"")+(nWarn?nWarn+" warning"+(nWarn>1?"s":""):"");
+  veil.innerHTML='<div class="modal" style="width:560px"><div class="modal-h"><h3>'+(fromCheck?"Tree health check":"Before exporting")+'</h3>'+
+    '<div class="spacer"></div><span class="mini">'+esc(count)+'</span></div>'+
     '<div class="modal-b">'+body+'</div>'+
     '<div class="modal-f"><button class="btn" id="ivClose">Close</button>'+
-    (nErr?'<button class="btn danger" id="ivGo">Export anyway</button>':'<button class="btn primary" id="ivGo">Export</button>')+'</div></div>';
+    (fromCheck?'':(nErr?'<button class="btn danger" id="ivGo">Export anyway</button>':'<button class="btn primary" id="ivGo">Export</button>'))+'</div></div>';
   document.body.appendChild(veil);
   veil.onclick=e=>{ if(e.target===veil) veil.remove(); };
   $("#ivClose").onclick=()=>veil.remove();
-  $("#ivGo").onclick=()=>{ veil.remove(); exportAll(true); };
+  const go=$("#ivGo"); if(go) go.onclick=()=>{ veil.remove(); exportAll(true); };
+  veil.querySelectorAll("[data-jump]").forEach(el=>el.onclick=()=>{ const id=el.dataset.jump; veil.remove(); if(byId(id)){ select(id); focusOn(id); } });
 }
 
 /* =====================================================================
@@ -2051,6 +2340,7 @@ function openSettings(){
       row("Search bar","Show the search box in the toolbar.", seg("searchBar",[[true,"On"],[false,"Off"]]))+
       row("Focus badge label","What the gold badge on a focus shows. Auto = the search-filter name until other advanced options are set (then 'adv').", seg("advLabel",[["auto","Auto"],["filter","Filter"],["advanced","Advanced"],["both","Both"]]))+
       row("Script sync","In a focus's Script tab, apply edits back to the tool only when the script parses cleanly, or live on every keystroke.", seg("scriptParse",[["valid","On valid"],["live","Live"]]))+
+      row("Export language","Which localisation slot the exported .yml goes in (l_english, l_french …). Your text is written into that language.", '<select class="inp" data-setsel="lang" style="width:auto; padding:6px 8px">'+LANGS.map(l=>'<option value="'+l+'"'+(s.lang===l?' selected':'')+'>'+l+'</option>').join("")+'</select>')+
       row("Approval & chaos","Per-focus approval/chaos controls that write USA_apr_add / USA_chaos_add and feed the story-planner curve — like the Event Maker.", seg("aprchaos",[[true,"On"],[false,"Off"]]))+
       row("New focus","How to create a focus on the canvas (the ＋ Focus button always works too).", seg("newFocus",[["double","Dbl-click"],["shiftdouble","Shift+dbl"],["key","N key"]]))+
       row("Marquee select","Drag on empty canvas to box-select; panning then uses middle-mouse or the wheel.", seg("dragSelect",[[false,"Off"],[true,"On"]]))+
@@ -2070,6 +2360,7 @@ function openSettings(){
     persist(); applySettings(); render(); if(selId) renderPanel();
     if($("#iconVeil")) fillIconGrid($("#icSearch").value);
   });
+  veil.querySelectorAll("[data-setsel]").forEach(sel=> sel.onchange=()=>{ P.settings[sel.dataset.setsel]=sel.value; persist(); });
 }
 function closeSettings(){ const v=$("#setVeil"); if(v) v.remove(); }
 function openHelp(){
@@ -2082,8 +2373,10 @@ function openHelp(){
     '<p><b>Link them.</b> <b>↳ Prerequisite</b>: click the parent, then the child. <b>⇄ Exclusive</b>: click two focuses that should exclude each other. Toggle the button again (or press <kbd>Esc</kbd>) to stop.</p>'+
     '<p><b>Dates.</b> Set a start date and days-per-cost up top. Each node shows how long it takes and — following its prerequisite chain — the date it would finish.</p>'+
     '<p><b>Effects &amp; modifiers.</b> In a focus, use <b>＋ Effect</b> to search the effect library for the completion reward. Build a national spirit under <b>◆ Spirits</b> from a searchable modifier list, then grant it with <b>◆ Grant spirit</b>.</p>'+
-    '<p><b>Icons.</b> Pick from '+ICONS.length+' vanilla icons or <b>Import image…</b> — imports are resized to 95×95, converted to .dds, and given a matching shine automatically.</p>'+
-    '<p><b>Export.</b> <b>Export ZIP</b> writes a ready-to-drop mod: the focus file, localisation, the two .gfx files, .dds icons, spirits, and a README. Everything saves in your browser automatically; use <b>Save</b> / <b>Open</b> for a portable project file.</p>'+
+    '<p><b>Events.</b> <b>✉ Events</b> manages triggered-only events (title, description, options + effects) shared with the standalone Event Maker — edit them in either tool. Fire one when a focus completes with the focus’s <b>Fires event</b> field, or drop a call anywhere with <b>✉ Fire event</b>. They export into the same mod ZIP.</p>'+
+    '<p><b>Icons.</b> Pick from '+ICONS.length+' vanilla icons, <b>Import image…</b> (resized to 95×95, converted to .dds with a matching shine), or <b>＋ Prototype</b> to add a named placeholder sprite you can swap for real art in the folders later.</p>'+
+    '<p><b>Copy &amp; paste.</b> Select focuses and press <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd> — a pasted sub-branch keeps its internal prerequisite and exclusive links and lands on the first free spot.</p>'+
+    '<p><b>Check &amp; export.</b> <b>✓ Check</b> reports duplicate ids, missing icons/localisation, broken links and overlaps (click a row to jump to it). <b>Export ZIP</b> writes a ready-to-drop mod folder — descriptor.mod, the launcher .mod, focus file, localisation (language set in <b>⚙ Settings</b>), .gfx, .dds icons, spirits and a README. Everything autosaves in your browser; use <b>Save</b> / <b>Open</b> for a portable project file.</p>'+
     '</div><div class="modal-f"><button class="btn primary" id="hlClose">Got it</button></div></div>';
   document.body.appendChild(veil);
   veil.onclick=e=>{ if(e.target===veil) veil.remove(); };
@@ -2785,11 +3078,52 @@ function dupFocus(id){
   const c=JSON.parse(JSON.stringify(src)); c.id=uid(); c.x=src.x+1; c.y=src.y; c.prereq=[]; c.mutex=[]; c.keyEdited=false; c.key=""; c.name=src.name?src.name+" copy":"";
   P.focuses.push(c); select(c.id);
 }
+/* ---- copy / paste focuses (Ctrl+C / Ctrl+V) ---- */
+let clip=null;
+function copySel(){
+  if(!sel.size) return;
+  const set=new Set(sel);
+  // deep-copy the selected focuses, keeping only the links that stay inside the
+  // selection so a pasted sub-branch keeps its internal shape but doesn't drag in
+  // references to focuses that weren't copied
+  clip=P.focuses.filter(f=>set.has(f.id) && !f.external).map(f=>{
+    const c=JSON.parse(JSON.stringify(f));
+    c.prereq=(c.prereq||[]).filter(p=>set.has(p));
+    c.mutex=(c.mutex||[]).filter(m=>set.has(m));
+    if(c.relTo && !set.has(c.relTo)) c.relTo="";
+    return c;
+  });
+  toast("Copied "+clip.length+" focus"+(clip.length>1?"es":""));
+}
+function pasteClip(){
+  if(!clip || !clip.length) return;
+  const idMap={};
+  const clones=clip.map(src=>{ const c=JSON.parse(JSON.stringify(src)); const nid=uid(); idMap[src.id]=nid; c.id=nid; return c; });
+  clones.forEach(c=>{
+    c.prereq=(c.prereq||[]).map(p=>idMap[p]).filter(Boolean);
+    c.mutex=(c.mutex||[]).map(m=>idMap[m]).filter(Boolean);
+    c.relTo=c.relTo && idMap[c.relTo] ? idMap[c.relTo] : "";
+    c.prereqRaw=null; c.external=false;
+    c.keyEdited=false; c.key="";        // fresh auto keys so ids don't clash with the originals
+  });
+  // slide the whole block to the first free diagonal so it doesn't sit on top of anything
+  const occupied=new Set(P.focuses.map(f=>f.x+","+f.y));
+  let d=1; while(d<400 && clones.some(c=>occupied.has((c.x+d)+","+(c.y+d)))) d++;
+  clones.forEach(c=>{ c.x+=d; c.y+=d; });
+  // keep script ids unique against the tree (and each other)
+  const existing=new Set(P.focuses.map(f=>focusKey(f)));
+  clones.forEach(c=>{ let g=0; while(existing.has(focusKey(c)) && g++<60){ c.name=(c.name||"focus")+" copy"; c.key=""; } existing.add(focusKey(c)); });
+  P.focuses=P.focuses.concat(clones);
+  sel=new Set(clones.map(c=>c.id)); selId=clones[clones.length-1].id;
+  renderPanel(); render(); persist(); pushHist();
+  toast("Pasted "+clones.length+" focus"+(clones.length>1?"es":""));
+}
 
 $("#bAdd").onclick=()=>addFocusAt();
 $("#bPre").onclick=()=>setLinkMode("pre");
 $("#bMx").onclick=()=>setLinkMode("mx");
 $("#bIdeas").onclick=openIdeas;
+$("#bEvents").onclick=openEvents;
 $("#bFlags").onclick=openFlags;
 $("#bPreview").onclick=togglePreview;
 $("#searchInput").oninput=e=>runSearch(e.target.value);
@@ -2799,6 +3133,7 @@ $("#searchInput").onkeydown=e=>{
 };
 document.addEventListener("click", e=>{ if(!e.target.closest("#searchWrap")){ const r=$("#searchRes"); if(r) r.hidden=true; } });
 $("#bExport").onclick=()=>exportAll(false);
+$("#bCheck").onclick=checkTree;
 $("#bImport").onclick=openImport;
 $("#bSave").onclick=saveProject;
 $("#bOpen").onclick=()=>$("#fileProj").click();
@@ -2832,6 +3167,8 @@ document.addEventListener("keydown", e=>{
   if((e.ctrlKey||e.metaKey) && (e.key==="z"||e.key==="Z") && !typing){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); return; }
   if((e.ctrlKey||e.metaKey) && (e.key==="y"||e.key==="Y") && !typing){ e.preventDefault(); redo(); return; }
   if((e.ctrlKey||e.metaKey) && (e.key==="a"||e.key==="A") && !typing){ e.preventDefault(); selectAll(); return; }
+  if((e.ctrlKey||e.metaKey) && (e.key==="c"||e.key==="C") && !typing){ if(sel.size){ e.preventDefault(); copySel(); } return; }
+  if((e.ctrlKey||e.metaKey) && (e.key==="v"||e.key==="V") && !typing){ if(clip&&clip.length){ e.preventDefault(); pasteClip(); } return; }
   if(e.key==="Escape"){ if(linkMode){ setLinkMode(linkMode); } closePicker(); if(sel.size) deselectAll(); }
   if((e.key==="Delete"||e.key==="Backspace") && sel.size && !typing){
     e.preventDefault(); delMany([...sel]);
@@ -2844,6 +3181,7 @@ document.addEventListener("keydown", e=>{
 /* boot */
 (function init(){
   const had=loadSaved();
+  evLoad();   // pull in any events shared with the Event Maker
   if(!had){
     // seed a tiny example so the canvas isn't intimidatingly blank
     const a=newFocus(2,0); a.name="Rebuild the Nation"; a.icon="GFX_goal_generic_construct_civ_factory"; a.cost=5; a.reward="add_political_power = 100\nadd_stability = 0.05";
