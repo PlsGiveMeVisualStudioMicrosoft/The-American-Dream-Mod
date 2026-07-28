@@ -1120,6 +1120,15 @@ function renderMulti(){
       (linked?'<button class="btn sm" id="bmMxClear">Separate them</button>':'')+
       '</div><div class="hint">'+(linked?"These focuses are currently mutually exclusive with each other. ":"")+'A group means only one of them can be taken.</div></div>';
   }
+  {
+    const idset=new Set(ids);
+    const hasPrereqLink=fs.some(f=>(f.prereq||[]).some(p=>idset.has(p)));
+    const hasMxLink=fs.some(f=>(f.mutex||[]).some(m=>idset.has(m)));
+    if(hasPrereqLink||hasMxLink)
+      bulk+='<div class="fld"><label>Links</label><div class="inline">'+
+        '<button class="btn sm" id="bmUnlinkAll">Separate all links</button>'+
+        '</div><div class="hint">Removes every prerequisite and mutually-exclusive link <b>between the selected focuses</b> (links to focuses outside the selection are kept).</div></div>';
+  }
   if(P.settings.bulkApr && P.settings.aprchaos) bulk+='<div class="fld"><label>Approval &amp; chaos (all)</label><div class="inline"><span class="mini">apr</span><input class="inp mono" id="bmApr" style="width:52px; flex:0 0 auto"><span class="mini">chaos</span><input class="inp mono" id="bmChaos" style="width:52px; flex:0 0 auto"><button class="btn sm" id="bmVars">Apply</button></div></div>';
   if(P.settings.bulkIcon) bulk+='<div class="fld"><label>Icon</label><button class="btn sm" id="bmIcon">Set icon for all…</button></div>';
 
@@ -1139,6 +1148,7 @@ function renderMulti(){
   if($("#bmCost")) $("#bmCost").onclick=()=>{ const v=clampInt($("#bmCostN").value,0,1000,null); if(v==null){toast("Enter a cost.");return;} fs.forEach(f=>f.cost=v); persist(); render(); renderMulti(); };
   if($("#bmMx")) $("#bmMx").onclick=()=>{ fs.forEach(f=>{ f.mutex=f.mutex||[]; fs.forEach(o=>{ if(o!==f && f.mutex.indexOf(o.id)<0) f.mutex.push(o.id); }); }); persist(); render(); renderMulti(); toast("Made mutually exclusive"); };
   if($("#bmMxClear")) $("#bmMxClear").onclick=()=>{ const set=new Set(ids); fs.forEach(f=>{ f.mutex=(f.mutex||[]).filter(m=>!set.has(m)); }); persist(); render(); renderMulti(); };
+  if($("#bmUnlinkAll")) $("#bmUnlinkAll").onclick=()=>{ const set=new Set(ids); fs.forEach(f=>{ f.prereq=(f.prereq||[]).filter(p=>!set.has(p)); f.mutex=(f.mutex||[]).filter(m=>!set.has(m)); }); persist(); render(); renderMulti(); toast("Separated all links"); };
   if($("#bmVars")) $("#bmVars").onclick=()=>{ const a=$("#bmApr").value, c=$("#bmChaos").value; fs.forEach(f=>{ f.vars=f.vars||{aprOn:false,apr:5,chaosOn:false,chaos:5}; if(a!==""){f.vars.aprOn=true; f.vars.apr=Number(a)||0;} if(c!==""){f.vars.chaosOn=true; f.vars.chaos=Number(c)||0;} }); persist(); render(); renderMulti(); };
   if($("#bmIcon")) $("#bmIcon").onclick=()=>openIconPicker(name=>{ fs.forEach(f=>f.icon=name); persist(); render(); renderMulti(); });
 }
