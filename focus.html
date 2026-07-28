@@ -167,6 +167,9 @@ body.theme-dark{ --syn-com:#7b838d; --syn-str:#7bc994; --syn-num:#e0a45f; --syn-
 .code-gutter{flex:0 0 auto; width:44px; overflow:hidden; text-align:right; color:var(--ink3); background:var(--sunk); border-right:1px solid var(--line); padding:8px 6px 8px 0; white-space:pre; user-select:none}
 .code-gutter .gl{display:block}
 .code-gutter .gl.e{color:var(--bad); font-weight:700} .code-gutter .gl.w{color:var(--warn); font-weight:700}
+.code-gutter .gl.e, .code-gutter .gl.w{cursor:pointer}
+.code-status{cursor:pointer}
+.code-status .jump{color:var(--accent2); text-decoration:underline}
 .code-editarea{flex:1 1 auto; position:relative; overflow:hidden}
 .code-hl, .code-ta{margin:0; border:0; padding:8px 10px; font:inherit; line-height:inherit; white-space:pre; tab-size:4; -moz-tab-size:4; position:absolute; inset:0; box-sizing:border-box}
 .code-hl{pointer-events:none; color:var(--ink); background:transparent; overflow:hidden}
@@ -1091,7 +1094,13 @@ function renderMulti(){
         return '<label><input type="checkbox" data-bsf="'+sf[0]+'"'+(cnt===fs.length&&cnt?" checked":"")+'>'+esc(sf[1])+'</label>'; }).join("")+
     '</div></div>';
   if(P.settings.bulkCost) bulk+='<div class="fld"><label>Cost</label><div class="inline"><input class="inp mono" id="bmCostN" style="width:70px; flex:0 0 auto" placeholder="pts"><button class="btn sm" id="bmCost">Apply to all</button></div></div>';
-  if(P.settings.bulkMutex) bulk+='<div class="fld"><label>Mutually exclusive</label><div class="inline"><button class="btn sm" id="bmMx">Make these a group</button><button class="btn sm" id="bmMxClear">Clear</button></div><div class="hint">Makes every selected focus exclusive with the others — a branch choice.</div></div>';
+  if(P.settings.bulkMutex){
+    const idset=new Set(ids), linked=fs.some(f=>(f.mutex||[]).some(m=>idset.has(m)));
+    bulk+='<div class="fld"><label>Mutually exclusive</label><div class="inline">'+
+      '<button class="btn sm" id="bmMx">Make these a group</button>'+
+      (linked?'<button class="btn sm" id="bmMxClear">Separate them</button>':'')+
+      '</div><div class="hint">'+(linked?"These focuses are currently mutually exclusive with each other. ":"")+'A group means only one of them can be taken.</div></div>';
+  }
   if(P.settings.bulkApr && P.settings.aprchaos) bulk+='<div class="fld"><label>Approval &amp; chaos (all)</label><div class="inline"><span class="mini">apr</span><input class="inp mono" id="bmApr" style="width:52px; flex:0 0 auto"><span class="mini">chaos</span><input class="inp mono" id="bmChaos" style="width:52px; flex:0 0 auto"><button class="btn sm" id="bmVars">Apply</button></div></div>';
   if(P.settings.bulkIcon) bulk+='<div class="fld"><label>Icon</label><button class="btn sm" id="bmIcon">Set icon for all…</button></div>';
 
@@ -1323,9 +1332,9 @@ stage.addEventListener("mousedown", e=>{
 });
 // double-click empty canvas to drop a new focus (gesture switchable in Settings)
 stage.addEventListener("dblclick", e=>{
-  if(linkMode) return;
-  if(!e.target.closest("#board")) return;   // only the empty canvas creates — never the preview/zoom overlays
+  if(!e.target.closest("#board")) return;   // ignore overlays (preview/zoom bars)
   if(e.target.closest(".node")) return;
+  if(linkMode){ setLinkMode(linkMode); return; }   // double-click empty exits prerequisite / exclusive mode, like Esc
   const g=P.settings.newFocus;
   if(g==="double" || (g==="shiftdouble" && e.shiftKey)) createFocusAtClient(e.clientX, e.clientY);
 });
@@ -2182,9 +2191,13 @@ function doImport(focusText, locText, ideasText, mode){
     if(parsed.treeId) P.meta.treeId=parsed.treeId;
     P.meta.countryRaw=parsed.countryRaw||""; P.meta.treeExtra=parsed.treeExtra||"";
   }
+  // scan for branch gates (flags / game rules in allow_branch) so the Flags
+  // panel and Preview work on the imported tree straight away
+  let gates=0; const seenFlag=new Set(P.flags.map(fl=>fl.key));
+  focuses.forEach(f=>{ const g=branchGate(f); if(g && !seenFlag.has(g.key)){ seenFlag.add(g.key); P.flags.push({key:g.key, scope:g.scope, note:(g.scope==="rule"?"game rule — branch visibility":"branch flag (imported)")}); gates++; } });
   selId=null; sel=new Set();
   applySettings(); syncTopbar(); render(); renderPanel(); fitView(); pushHist();
-  toast("Imported "+focuses.filter(f=>!f.external).length+" focuses"+(placeholders?" · "+placeholders+" external":"")+(ideas.length?" · "+ideas.length+" spirits":""));
+  toast("Imported "+focuses.filter(f=>!f.external).length+" focuses"+(placeholders?" · "+placeholders+" external":"")+(ideas.length?" · "+ideas.length+" spirits":"")+(gates?" · "+gates+" branch flag"+(gates>1?"s":""):""));
 }
 function openImport(){
   const veil=document.createElement("div"); veil.className="veil"; veil.id="impVeil";
@@ -2277,21 +2290,35 @@ function highlightScript(src){
 function lintScript(text, f){
   const out=[], lines=text.split("\n");
   const indentOf=ln=>(ln.match(/^[ \t]*/)[0].replace(/\t/g,"    ")).length;
-  // ---- brace + quote balance, tracking where each { was opened
+  // ---- brace + quote balance. Each open '{' remembers its line and indent, and
+  // whether it has deeper-indented content ('deep'). When a non-'}' line dedents
+  // back to/under a deep open block, that block's '}' was forgotten there — which
+  // pinpoints a missing brace far better than counting can. The 'deep' guard keeps
+  // flat / unindented code from false-positiving.
   let inStr=false; const stack=[];
   for(let li=0; li<lines.length; li++){
-    const ln=lines[li]; let q=0;
+    const ln=lines[li];
+    const trimmed=ln.replace(/#.*/,"").trim();
+    if(trimmed!==""){
+      const indent=indentOf(ln);
+      while(stack.length && stack[stack.length-1].deep && trimmed[0]!=="}" && indent<=stack[stack.length-1].indent){
+        const op=stack.pop();
+        out.push({line:li+1, level:"error", msg:"a '}' is likely missing above line "+(li+1)+" — the block opened on line "+op.line+" is never closed"});
+      }
+      if(stack.length && indent>stack[stack.length-1].indent) stack[stack.length-1].deep=true;
+    }
+    let q=0;
     for(let i=0;i<ln.length;i++){
       const c=ln[i];
       if(inStr){ if(c==="\\"){ i++; continue; } if(c==='"') inStr=false; continue; }
       if(c==="#") break;
       if(c==='"'){ inStr=true; q++; continue; }
-      if(c==="{") stack.push({line:li+1, indent:indentOf(ln)});
+      if(c==="{") stack.push({line:li+1, indent:indentOf(ln), deep:false});
       else if(c==="}"){ if(stack.length) stack.pop(); else out.push({line:li+1, level:"error", msg:"unexpected '}' — there's no open '{' for it to close"}); }
     }
     if(q%2===1){ out.push({line:li+1, level:"error", msg:"unterminated string (odd number of quotes on this line)"}); inStr=false; }
   }
-  // any '{' still open never got a '}' — guess where it belongs from indentation
+  // anything still open at EOF (a block that runs off the end)
   stack.forEach(op=>{
     let g=0;
     for(let i=op.line; i<lines.length; i++){ if(!lines[i].trim()) continue; if(indentOf(lines[i])<=op.indent){ g=i+1; break; } }
@@ -2337,13 +2364,24 @@ function makeCodeEditor(opts){
     const markers=opts.lint?opts.lint(v):[];
     const byLine={}; markers.forEach(mk=>{ if(!byLine[mk.line] || mk.level==="error") byLine[mk.line]=mk; });
     const n=v.split("\n").length; let g="";
-    for(let i=1;i<=n;i++){ const mk=byLine[i]; g+='<span class="gl'+(mk?(mk.level==="error"?" e":" w"):"")+'"'+(mk?' title="'+esc(mk.msg)+'"':'')+'>'+i+'</span>'; }
+    for(let i=1;i<=n;i++){ const mk=byLine[i]; g+='<span class="gl'+(mk?(mk.level==="error"?" e":" w"):"")+'"'+(mk?' data-l="'+i+'" title="'+esc(mk.msg)+'"':'')+'>'+i+'</span>'; }
     gutter.innerHTML=g;
-    const errs=markers.filter(m=>m.level==="error").length, warns=markers.length-errs;
-    status.innerHTML = errs? '<span class="err">'+errs+' error'+(errs>1?"s":"")+'</span>'+(warns?' · <span class="warn">'+warns+' warning'+(warns>1?"s":"")+'</span>':'')
-      : warns? '<span class="warn">'+warns+' warning'+(warns>1?"s":"")+'</span>' : '<span class="ok">✓ no issues</span>';
+    const errList=markers.filter(m=>m.level==="error"), errs=errList.length, warns=markers.length-errs;
+    const firstBad=(errList[0]||markers[0]); const fl=firstBad?firstBad.line:0;
+    status.dataset.jump=fl||"";
+    status.innerHTML = errs? '<span class="err">'+errs+' error'+(errs>1?"s":"")+'</span>'+(warns?' · <span class="warn">'+warns+'</span>':'')+(fl?' <span class="jump">→ go to line '+fl+'</span>':'')
+      : warns? '<span class="warn">'+warns+' warning'+(warns>1?"s":"")+'</span>'+(fl?' <span class="jump">→ line '+fl+'</span>':'') : '<span class="ok">✓ no issues</span>';
     syncScroll();
   }
+  function jumpToLine(nn){
+    const arr=ta.value.split("\n"); let idx=0; for(let i=0;i<nn-1 && i<arr.length;i++) idx+=arr[i].length+1;
+    ta.focus(); ta.setSelectionRange(idx, idx+((arr[nn-1]||"").length));
+    const cs=getComputedStyle(ta), lh=parseFloat(cs.lineHeight)||18, pt=parseFloat(cs.paddingTop)||8;
+    ta.scrollTop=Math.max(0, pt+(nn-1)*lh - ta.clientHeight/2 + lh);
+    syncScroll();
+  }
+  gutter.addEventListener("click", e=>{ const t=e.target.closest("[data-l]"); if(t) jumpToLine(+t.dataset.l); });
+  status.addEventListener("click", ()=>{ if(status.dataset.jump) jumpToLine(+status.dataset.jump); });
   ta.addEventListener("input",()=>{ paint(); if(opts.onChange) opts.onChange(ta.value); });
   ta.addEventListener("scroll", syncScroll);
   // Tab / Shift+Tab: indent the selection like VS Code (execInsert keeps native undo)
@@ -2494,9 +2532,20 @@ function renderScript(f){
 }
 
 /* ---- flags (hidden branches) ---- */
+/* exact single-flag allow_branch — for the Advanced dropdown */
 function branchFlagOf(f){
   const m=/^\s*has_(global|country)_flag\s*=\s*([A-Za-z0-9_]+)\s*$/.exec(f.allowBranch||"");
   return m?{scope:m[1], key:m[2]}:null;
+}
+/* any branch gate anywhere in allow_branch — a flag OR a game rule — for the
+   preview and for scanning imported trees */
+function branchGate(f){
+  const ab=f.allowBranch||"";
+  let m=/has_(global|country)_flag\s*=\s*([A-Za-z0-9_]+)/.exec(ab);
+  if(m) return {scope:m[1], key:m[2]};
+  m=/has_game_rule\s*=\s*\{[\s\S]*?\brule\s*=\s*([A-Za-z0-9_]+)/.exec(ab);
+  if(m) return {scope:"rule", key:m[1]};
+  return null;
 }
 function openFlags(){
   const veil=document.createElement("div"); veil.className="veil"; veil.id="flagVeil";
@@ -2515,7 +2564,9 @@ function renderFlags(){
   if(!P.flags.length){ b.innerHTML='<div class="mini">No flags yet. A flag is a named on/off switch (has_country_flag / has_global_flag) that shows or hides a focus branch.</div>'; return; }
   b.innerHTML=P.flags.map((fl,i)=>'<div class="flagchip">'+
     '<input class="inp mono" data-fk="'+i+'" value="'+esc(fl.key)+'" placeholder="flag_name" style="flex:2 1 0">'+
-    '<span class="seg"><button data-fsc="'+i+'" data-v="country" class="'+(fl.scope!=="global"?"on":"")+'">country</button><button data-fsc="'+i+'" data-v="global" class="'+(fl.scope==="global"?"on":"")+'">global</button></span>'+
+    (fl.scope==="rule"
+      ? '<span class="fs" style="padding:5px 8px">game rule</span>'
+      : '<span class="seg"><button data-fsc="'+i+'" data-v="country" class="'+(fl.scope!=="global"?"on":"")+'">country</button><button data-fsc="'+i+'" data-v="global" class="'+(fl.scope==="global"?"on":"")+'">global</button></span>')+
     '<input class="inp" data-fn="'+i+'" value="'+esc(fl.note||"")+'" placeholder="note" style="flex:2 1 0">'+
     '<button class="btn sm danger" data-fdel="'+i+'">×</button></div>').join("");
   b.querySelectorAll("[data-fk]").forEach(e=>e.oninput=()=>{ P.flags[+e.dataset.fk].key=e.value.trim().replace(/\s+/g,"_"); persist(); });
@@ -2527,7 +2578,7 @@ function branchFlagHTML(f){
   const cur=branchFlagOf(f);
   const custom=(f.allowBranch||"").trim() && !cur;
   let opts='<option value="">— always shown —</option>';
-  P.flags.forEach(fl=>{ if(!fl.key) return; const val=fl.scope+":"+fl.key; opts+='<option value="'+esc(val)+'"'+(cur&&cur.scope===fl.scope&&cur.key===fl.key?" selected":"")+'>'+esc(fl.key)+' ('+fl.scope+')</option>'; });
+  P.flags.forEach(fl=>{ if(!fl.key || fl.scope==="rule") return; const val=fl.scope+":"+fl.key; opts+='<option value="'+esc(val)+'"'+(cur&&cur.scope===fl.scope&&cur.key===fl.key?" selected":"")+'>'+esc(fl.key)+' ('+fl.scope+')</option>'; });
   return '<div class="fld"><label>Branch shown when (hidden focus)</label>'+
     '<select class="inp" id="aBranchFlag"'+(custom?" disabled":"")+'>'+opts+'</select>'+
     '<div class="hint">'+(custom?"allow_branch has custom script — edit it below.":"Hides this focus until a flag is set. Manage flags with ⚑ Flags; set one from another focus's reward via ⚑ Set flag.")+'</div></div>';
@@ -2565,7 +2616,7 @@ function renderPreviewBar(){
 }
 function applyPreview(){
   document.querySelectorAll(".node").forEach(n=>{
-    const f=byId(n.dataset.id); const bf=f&&branchFlagOf(f);
+    const f=byId(n.dataset.id); const bf=f&&branchGate(f);
     n.classList.toggle("hidden-preview", !!(bf && hiddenFlags.has(bf.key)));
   });
 }
