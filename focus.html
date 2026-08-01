@@ -2029,8 +2029,16 @@ function buildFocusFile(){
   let maxY=4; P.focuses.forEach(f=>{ if(!f.external) maxY=Math.max(maxY,f.y); });
   let s="focus_tree = {\n";
   s+="\tid = "+treeId()+"\n\n";
-  if(P.meta.countryRaw && P.meta.countryRaw.trim()) s+=block("country", P.meta.countryRaw, 1)+"\n";
-  else s+="\tcountry = {\n\t\tfactor = 0\n\t\tmodifier = {\n\t\t\tadd = 100\n\t\t\ttag = "+T+"\n\t\t}\n\t}\n\n";
+  // country score block — the selector that decides which tag gets this tree.
+  // A valid block uses factor = 0 and grants the tag inside a modifier { add = 100 }.
+  // Keep an imported block only when it's already in that shape; otherwise emit the
+  // canonical block, since a bare "factor = 1 / tag = TAG" never assigns the tree in-game.
+  const cRaw=(P.meta.countryRaw||"").trim();
+  if(cRaw && /modifier\s*=\s*\{[^{}]*\badd\s*=/.test(cRaw)) s+=block("country", P.meta.countryRaw, 1)+"\n";
+  else {
+    const m=/tag\s*=\s*([A-Za-z0-9_]+)/.exec(cRaw);
+    s+="\tcountry = {\n\t\tfactor = 0\n\t\tmodifier = {\n\t\t\tadd = 100\n\t\t\ttag = "+((m&&m[1])||T)+"\n\t\t}\n\t}\n\n";
+  }
   if(P.meta.treeExtra && P.meta.treeExtra.trim()) s+=ind(P.meta.treeExtra,1)+"\n\n";
   else s+="\tdefault = no\n\treset_on_civilwar = no\n\tcontinuous_focus_position = { x = 50 y = "+((maxY+3)*100)+" }\n\n";
   P.focuses.forEach(f=>{ if(!f.external) s+=buildFocus(f); });   // placeholders for external refs aren't exported
